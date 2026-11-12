@@ -23,11 +23,17 @@ A universal, high-performance Python trading bridge that streams real-time marke
 
 ```
 upstox-trading-bridge/
+├── install.bat                   # 🚀 1-Click Windows Installer (venv + dependencies + template)
+├── run.bat                       # 🚀 1-Click Windows Live Bridge Runner
+├── simulate.bat                  # 🚀 1-Click Windows Market Simulation Runner
+├── install.sh                    # 1-Click macOS / Linux Installer
+├── run.sh                        # 1-Click macOS / Linux Runner
+├── watchlist.txt                 # 📝 Watchlist (1 symbol per line, hot-reloading)
 ├── .env                          # Upstox API keys & Google Sheet Webhook URL
 ├── .env.example                  # Environment template
 ├── config/
 │   ├── config.yaml               # Settings (refresh rates, sheet names, ports)
-│   └── watchlist.yaml            # Instruments to stream (e.g., NIFTY 50, RELIANCE)
+│   └── watchlist.yaml            # Default watchlist configuration
 ├── data/
 │   └── Upstox_Live_Market.xlsx   # Live updated workbook
 ├── templates/
@@ -49,34 +55,42 @@ upstox-trading-bridge/
 
 ## Quick Start Guide
 
-### 1. Installation
+### 🪟 Windows (1-Click Setup)
 
-Activate your virtual environment and install dependencies:
+1. **Install Dependencies & Set Up Environment**:
+   - Double-click **`install.bat`** (or open Command Prompt in the folder and run `install.bat`).
+   - This automatically checks Python, creates `.venv`, installs all packages from `requirements.txt`, creates `.env`, and generates the pre-styled Excel template!
 
-```bash
-cd /Users/bhavinamesara/Projects/upstox-trading-bridge
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+2. **Configure Credentials**:
+   - Open **`.env`** in Notepad.
+   - Paste your `UPSTOX_ACCESS_TOKEN` (from [Upstox Developer Console](https://developer.upstox.com)).
+   - *(Optional)* Paste your `GOOGLE_SHEET_WEBHOOK_URL` if streaming to Google Sheets.
 
-### 2. Configure Credentials (`.env`)
+3. **Start the Bridge**:
+   - Double-click **`run.bat`** to start streaming live market data!
+   - *(Optional)* Double-click **`simulate.bat`** to test anytime outside market hours.
 
-Copy `.env.example` to `.env`:
+---
 
-```bash
-cp .env.example .env
-```
+### 🍎 macOS / 🐧 Linux Setup
 
-Open `.env` and fill in your details:
-
-```ini
-UPSTOX_API_KEY="your_upstox_api_key"
-UPSTOX_API_SECRET="your_upstox_api_secret"
-UPSTOX_REDIRECT_URI="http://127.0.0.1:5000/callback"
-
-# Paste your Google Apps Script Webhook URL here (see step below):
-GOOGLE_SHEET_WEBHOOK_URL="https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec"
-```
+1. **Run Installer**:
+   ```bash
+   ./install.sh
+   ```
+2. **Configure Credentials**:
+   ```bash
+   nano .env   # Paste your UPSTOX_ACCESS_TOKEN
+   ```
+3. **Start Bridge**:
+   ```bash
+   ./run.sh
+   ```
+   Or run directly with Python:
+   ```bash
+   source .venv/bin/activate
+   python main.py run
+   ```
 
 ---
 
