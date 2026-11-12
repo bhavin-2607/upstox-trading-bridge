@@ -1,0 +1,36 @@
+# Environment variables and secrets
+.env
+.env.local
+.token_cache.json
+
+# Python virtual environment & bytecode
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# Excel data files and locks
+data/*.xlsx
+data/*.tmp.xlsx
+~$*.xlsx
+
+# Downloaded instrument cache (~15MB compressed, 100MB+ uncompressed)
+data/instruments_master.json
+data/instruments_master.json.gz
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo

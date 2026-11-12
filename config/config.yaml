@@ -1,0 +1,42 @@
+# ==============================================================================
+# Upstox Live Trading Bridge Configuration
+# ==============================================================================
+
+upstox:
+  # Feed mode: "full" (includes OHLC, LTP, Volume, Depth) or "ltpc" (LTP & Close)
+  mode: "full"
+  # Auto-reconnect on network drops
+  auto_reconnect: true
+  # Cache duration for master instrument file in hours
+  instrument_cache_hours: 24
+
+excel:
+  # Enable local Excel synchronization
+  enabled: true
+  # Mode: "auto" (tries xlwings active app, falls back to atomic file)
+  mode: "auto"
+  # Target workbook path (relative or absolute)
+  file_path: "data/Upstox_Live_Market.xlsx"
+  # Target worksheet tab name
+  sheet_name: "LiveMarket"
+  # Refresh interval in seconds (0.5s - 1.0s recommended)
+  refresh_interval_sec: 0.5
+  # Set to false so watchlist.txt is the single source of truth
+  sync_watchlist_from_excel: false
+
+google_sheets:
+  # Enable Google Sheets synchronization via Webhook
+  enabled: true
+  # Refresh throttle interval in seconds (3.0s - 5.0s recommended to avoid quotas)
+  refresh_interval_sec: 3.0
+  # Target sheet name inside your Google Sheet
+  sheet_name: "LiveMarket"
+  # Request timeout in seconds
+  timeout_sec: 5.0
+
+local_feed_server:
+  # Universal embedded HTTP server providing live CSV/JSON feeds for any OS
+  # Allows `=WEBSERVICE("http://127.0.0.1:8080/quote?symbol=NIFTY 50")`
+  enabled: true
+  host: "127.0.0.1"
+  port: 8080

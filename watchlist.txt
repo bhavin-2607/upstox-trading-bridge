@@ -1,0 +1,11 @@
+# ==============================================================================
+# UPSTOX WATCHLIST (One symbol per line)
+# Edit this file anytime - the bridge detects changes automatically!
+# ==============================================================================
+
+NIFTY 50
+NIFTY BANK
+GOLD DEC FUT
+SILVER DEC FUT
+CRUDEOIL NOV FUT
+GOLD NOV 120000 PE

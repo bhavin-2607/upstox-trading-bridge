@@ -1,0 +1,17 @@
+# ==============================================================================
+# Upstox Watchlist
+# Add trading symbols or exact instrument keys here.
+# Symbols are automatically resolved to Upstox keys via the instrument master.
+# Examples:
+#   - Indices: "NIFTY 50", "NIFTY BANK", "FINNIFTY"
+#   - Equities: "RELIANCE", "TCS", "HDFCBANK", "INFY", "TATAMOTORS"
+#   - Upstox Keys: "NSE_INDEX|Nifty 50", "NSE_EQ|INE002A01018"
+# ==============================================================================
+
+symbols:
+  - "NIFTY 50"
+  - "NIFTY BANK"
+  - "GOLD DEC FUT"
+  - "SILVER DEC FUT"
+  - "CRUDEOIL NOV FUT"
+  - "GOLD NOV 120000 PE"

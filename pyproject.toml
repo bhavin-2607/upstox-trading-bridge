@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "upstox-trading-bridge"
+version = "1.0.0"
+description = "Universal Upstox API Live Market Data Bridge for Excel & Google Sheets"
+authors = [{ name = "Bhavin Amesara" }]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "upstox-python-sdk>=2.30.0",
+    "websockets>=13.0",
+    "requests>=2.31.0",
+    "pyyaml>=6.0.1",
+    "openpyxl>=3.1.2",
+    "xlwings>=0.30.0",
+    "protobuf>=5.26.0",
+    "python-dotenv>=1.0.1",
+    "psutil>=5.9.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["upstox_bridge*"]
+exclude = ["config*", "templates*", "scripts*", "tests*"]
+
+[project.scripts]
+upstox-bridge = "main:main"
