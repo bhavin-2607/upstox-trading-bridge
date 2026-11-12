@@ -113,15 +113,25 @@ class Settings:
 
     @property
     def excel_file_path(self) -> Path:
-        raw_path = self.config.get("excel", {}).get("file_path", "data/Upstox_Live_Market.xlsx")
+        raw_path = self.config.get("excel", {}).get("file_path", "trial.xlsx")
         p = Path(raw_path)
         if not p.is_absolute():
             p = self.root_dir / p
+        if not p.exists():
+            fallback = self.root_dir / "data" / "Upstox_Live_Market.xlsx"
+            if fallback.exists():
+                return fallback
         return p
 
     @property
     def excel_sheet_name(self) -> str:
-        return str(self.config.get("excel", {}).get("sheet_name", "LiveMarket"))
+        configured = self.config.get("excel", {}).get("sheet_name", "BST")
+        file_path = self.excel_file_path
+        if file_path.name.lower() == "trial.xlsx":
+            return "BST"
+        if file_path.name.lower() == "upstox_live_market.xlsx":
+            return "LiveMarket"
+        return str(configured)
 
     @property
     def excel_refresh_sec(self) -> float:

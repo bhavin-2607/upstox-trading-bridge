@@ -154,13 +154,25 @@ This opens your browser to the Upstox login dialog. Once you log in, the tool ca
 
 ## Running the Live Bridge
 
-To start streaming live market data to both Excel and Google Sheets:
+To start streaming live market data:
 
 ```bash
 python main.py run
 ```
 
-### Command Options:
+### Running with Custom Trading Sheets (`trial.xlsx` / `BST` Sheet):
+The bridge automatically detects `trial.xlsx` and its `BST` sheet when present!
+- **Dynamic SCRIPT Column**: Reads all instruments directly from Column A (`SCRIPT`) starting at row 3 (e.g. `INDEXNSE:NIFTY_50`, `NSE:AARTIIND`, `RELIANCE`).
+- **Non-Destructive In-Place Feeding**: Injects numbers into **LTP** (C), **OPEN** (D), **HIGH** (E), **LOW** (F), **P.CLOSE** (G), **P HIGH** (Y), **P. LOW** (Z), and **vol** (AF), leaving all existing formulas (`TREND`, `ENTRY`, `SL`, `TARGETS`, pivots) 100% untouched.
+- **Hot-Reloading**: Add any new ticker symbol into Column A in Excel while running, and the bridge will automatically subscribe to it on the fly!
+
+```bash
+# Explicitly specify workbook and sheet:
+python main.py run --file trial.xlsx --sheet BST
+python main.py simulate --file trial.xlsx --sheet BST
+```
+
+### Other Command Options:
 - **Custom symbols**:
   ```bash
   python main.py run --symbols "NIFTY 50,BANKNIFTY,RELIANCE,INFY,TCS"

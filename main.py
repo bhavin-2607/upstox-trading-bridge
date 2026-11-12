@@ -33,7 +33,10 @@ logger = logging.getLogger("MainCLI")
 
 def cmd_run(args):
     """Run the live market data bridge."""
-    runner = BridgeRunner()
+    custom_file = Path(args.file) if getattr(args, "file", None) else None
+    custom_sheet = getattr(args, "sheet", None)
+
+    runner = BridgeRunner(custom_file=custom_file, custom_sheet=custom_sheet)
 
     if args.symbols:
         custom_symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
@@ -59,46 +62,91 @@ def cmd_simulate(args):
     store = MarketStore()
     master = InstrumentMaster()
 
-    symbols = settings.watchlist_symbols or ["NIFTY 50", "NIFTY BANK", "RELIANCE", "TCS", "HDFCBANK", "INFY", "TATAMOTORS"]
-    for sym in symbols:
-        key = master.resolve_symbol(sym)
-        store.register_instrument(instrument_key=key, symbol=sym)
+    custom_file = Path(args.file) if getattr(args, "file", None) else settings.excel_file_path
+    custom_sheet = getattr(args, "sheet", None) or settings.excel_sheet_name
 
-    # Initialize simulated base prices
+    is_bst = custom_sheet.upper() == "BST" or custom_file.name.lower() == "trial.xlsx"
+
     base_prices = {}
     default_base = {
-        "NIFTY 50": 24200.0,
-        "NIFTY BANK": 51800.0,
-        "RELIANCE": 2985.0,
-        "TCS": 4120.0,
-        "HDFCBANK": 1690.0,
-        "INFY": 1845.0,
-        "TATAMOTORS": 940.0,
+        "NIFTY 50": 25300.0,
+        "NIFTY BANK": 61500.0,
+        "RELIANCE": 1335.0,
+        "TCS": 2470.0,
+        "HDFCBANK": 805.0,
+        "INFY": 1150.0,
+        "TATAMOTORS": 298.0,
+        "ICICIBANK": 1570.0,
+        "SBIN": 1060.0,
+        "BHARTIARTL": 2100.0,
+        "GOLD DEC FUT": 138200.0,
+        "SILVER DEC FUT": 181700.0,
+        "CRUDEOIL NOV FUT": 8080.0,
     }
-    for sym in symbols:
-        base_prices[sym] = default_base.get(sym, round(random.uniform(500, 3500), 2))
 
-    for sym, price in base_prices.items():
-        key = master.resolve_symbol(sym)
-        store.update_quote(
-            instrument_key=key,
-            ltp=price,
-            open_price=price * 0.998,
-            high_price=price * 1.005,
-            low_price=price * 0.995,
-            close_price=price * 0.997,
-            vwap=round(price * 0.999, 2),
-            volume=150000,
-        )
+    bst_syncer = None
+    excel_syncer = None
+
+    if is_bst:
+        from upstox_bridge.destinations.bst_syncer import BSTSyncer
+
+        print(f"[*] Simulation Mode: BST Custom Trading Sheet ({custom_file.name} -> '{custom_sheet}')")
+        bst_syncer = BSTSyncer(market_store=store, file_path=custom_file, sheet_name=custom_sheet)
+        bst_syncer.scan_scripts()
+        symbols = [sym for _, sym in bst_syncer.tracked_instruments]
+        print(f"[OK] Tracking {len(symbols)} instruments in BST sheet.")
+
+        # Initialize base prices and previous stats for all symbols
+        for sym in symbols:
+            key = master.resolve_symbol(sym)
+            p = default_base.get(sym.upper(), round(random.uniform(150, 4500), 2))
+            base_prices[sym] = p
+            ph = round(p * 1.015, 2)
+            pl = round(p * 0.985, 2)
+            pc = round(p * 0.998, 2)
+            store.update_prev_day_stats(key, prev_high=ph, prev_low=pl, prev_close=pc)
+            store.update_quote(
+                instrument_key=key,
+                ltp=p,
+                open_price=round(p * 0.999, 2),
+                high_price=round(p * 1.006, 2),
+                low_price=round(p * 0.994, 2),
+                close_price=pc,
+                prev_high=ph,
+                prev_low=pl,
+                vwap=round(p * 0.999, 2),
+                volume=random.randint(50000, 2500000),
+            )
+
+        bst_syncer.start()
+    else:
+        print("[*] Simulation Mode: Standard Watchlist Table")
+        symbols = settings.watchlist_symbols or ["NIFTY 50", "NIFTY BANK", "RELIANCE", "TCS", "HDFCBANK", "INFY", "TATAMOTORS"]
+        for sym in symbols:
+            key = master.resolve_symbol(sym)
+            store.register_instrument(instrument_key=key, symbol=sym)
+            base_prices[sym] = default_base.get(sym, round(random.uniform(500, 3500), 2))
+
+        for sym, price in base_prices.items():
+            key = master.resolve_symbol(sym)
+            store.update_quote(
+                instrument_key=key,
+                ltp=price,
+                open_price=round(price * 0.998, 2),
+                high_price=round(price * 1.005, 2),
+                low_price=round(price * 0.995, 2),
+                close_price=round(price * 0.997, 2),
+                vwap=round(price * 0.999, 2),
+                volume=150000,
+            )
+
+        excel_syncer = ExcelSyncer(market_store=store, file_path=custom_file, sheet_name=custom_sheet)
+        excel_syncer.start()
 
     # Start Local HTTP server
     if settings.local_server_enabled:
         server = LocalFeedServer(store)
         server.start()
-
-    # Start Excel syncer
-    excel = ExcelSyncer(market_store=store)
-    excel.start()
 
     # Start Google Sheet syncer if webhook provided
     gsheet = None
@@ -109,14 +157,17 @@ def cmd_simulate(args):
         print("\nNote: GOOGLE_SHEET_WEBHOOK_URL is not set in .env. Skipping Google Sheets push.")
 
     print("\nSimulation is streaming ticks live! Press Ctrl+C to stop.")
-    print("Tip: You can edit 'watchlist.txt' anytime while this is running to add/remove symbols!\n")
+    if is_bst:
+        print("Tip: You can add new ticker symbols directly into Column A of your Excel sheet anytime!\n")
+    else:
+        print("Tip: You can edit 'watchlist.txt' anytime while this is running to add/remove symbols!\n")
 
     last_txt_mtime = settings.watchlist_txt_path.stat().st_mtime if settings.watchlist_txt_path.exists() else 0.0
 
     try:
         while True:
-            # Check if watchlist.txt was edited
-            if settings.watchlist_txt_path.exists():
+            # Check if watchlist.txt was edited (Standard mode)
+            if not is_bst and settings.watchlist_txt_path.exists():
                 curr_mtime = settings.watchlist_txt_path.stat().st_mtime
                 if last_txt_mtime and curr_mtime != last_txt_mtime:
                     last_txt_mtime = curr_mtime
@@ -134,28 +185,44 @@ def cmd_simulate(args):
                 elif not last_txt_mtime:
                     last_txt_mtime = curr_mtime
 
-            # Pick 2-3 random stocks and nudge prices slightly
-            sample_k = min(len(symbols), random.randint(2, 4))
-            for sym in random.sample(symbols, k=sample_k):
-                key = master.resolve_symbol(sym)
-                current = base_prices.get(sym, 2000.0)
-                delta = current * random.uniform(-0.0015, 0.0015)
-                new_price = round(current + delta, 2)
-                base_prices[sym] = new_price
+            # In BST mode, refresh symbols list from syncer
+            if is_bst and bst_syncer:
+                symbols = [sym for _, sym in bst_syncer.tracked_instruments]
+                for s in symbols:
+                    if s not in base_prices:
+                        base_prices[s] = default_base.get(s.upper(), round(random.uniform(150, 4500), 2))
 
-                store.update_quote(
-                    instrument_key=key,
-                    ltp=new_price,
-                    high_price=max(new_price, base_prices[sym]),
-                    low_price=min(new_price, base_prices[sym]),
-                    vwap=round(new_price * 0.999, 2),
-                    volume=int(random.randint(1000, 50000)),
-                )
+            # Pick 4-8 random stocks and nudge prices slightly
+            if symbols:
+                sample_k = min(len(symbols), random.randint(4, 8))
+                for sym in random.sample(symbols, k=sample_k):
+                    key = master.resolve_symbol(sym)
+                    current = base_prices.get(sym, 2000.0)
+                    delta = current * random.uniform(-0.002, 0.002)
+                    new_price = round(current + delta, 2)
+                    base_prices[sym] = new_price
+
+                    item = store.get_quote_item(key)
+                    high_p = max(new_price, item.high) if item and item.high else new_price
+                    low_p = min(new_price, item.low) if item and item.low else new_price
+                    vol = (item.volume if item else 0) + random.randint(100, 2000)
+
+                    store.update_quote(
+                        instrument_key=key,
+                        ltp=new_price,
+                        high_price=high_p,
+                        low_price=low_p,
+                        vwap=round(new_price * 0.999, 2),
+                        volume=vol,
+                    )
 
             time.sleep(0.5)
     except KeyboardInterrupt:
         print("\nStopping simulation...")
-        excel.stop()
+        if excel_syncer:
+            excel_syncer.stop()
+        if bst_syncer:
+            bst_syncer.stop()
         if gsheet:
             gsheet.stop()
         print("Simulation stopped.")
@@ -234,11 +301,15 @@ def main():
     # Run
     p_run = subparsers.add_parser("run", help="Start the live market data bridge")
     p_run.add_argument("--symbols", help="Comma-separated symbols to stream (e.g. 'NIFTY 50,RELIANCE')")
+    p_run.add_argument("--file", help="Path to target Excel workbook (e.g. trial.xlsx)")
+    p_run.add_argument("--sheet", help="Target worksheet name (e.g. BST)")
     p_run.add_argument("--no-excel", action="store_true", help="Disable Excel sync")
     p_run.add_argument("--no-gsheet", action="store_true", help="Disable Google Sheets sync")
 
     # Simulate
-    subparsers.add_parser("simulate", help="Start simulation mode with real-time ticks (ideal for testing after-hours)")
+    p_sim = subparsers.add_parser("simulate", help="Start simulation mode with real-time ticks (ideal for testing after-hours)")
+    p_sim.add_argument("--file", help="Path to target Excel workbook (e.g. trial.xlsx)")
+    p_sim.add_argument("--sheet", help="Target worksheet name (e.g. BST)")
 
     # Login
     subparsers.add_parser("login", help="Authenticate with Upstox API and cache access token")

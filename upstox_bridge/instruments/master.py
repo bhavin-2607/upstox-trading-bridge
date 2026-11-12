@@ -125,12 +125,42 @@ class InstrumentMaster:
             self._by_key[key] = record
             self._by_symbol[sym.upper()] = record
 
+    @staticmethod
+    def clean_script_symbol(raw_symbol: str) -> str:
+        """
+        Strip Google Finance or broker prefixes (e.g. 'INDEXNSE:NIFTY_50' -> 'NIFTY 50',
+        'NSE:AARTIIND' -> 'AARTIIND', 'NSE:RELIANCE' -> 'RELIANCE').
+        """
+        clean = raw_symbol.strip()
+        if "|" in clean:
+            return clean
+
+        upper_raw = clean.upper()
+        for prefix in ("INDEXNSE:", "INDEXBSE:", "NSE:", "BSE:", "MCX:"):
+            if upper_raw.startswith(prefix):
+                clean = clean[len(prefix):]
+                break
+
+        # Common index formatting from Google Finance
+        upper_clean = clean.upper().strip()
+        if upper_clean == "NIFTY_50":
+            return "NIFTY 50"
+        if upper_clean == "NIFTY_BANK":
+            return "NIFTY BANK"
+        if upper_clean == "NIFTY_IT":
+            return "NIFTY IT"
+        if upper_clean == "NIFTY_FIN_SERVICE":
+            return "FINNIFTY"
+
+        return clean.strip()
+
     def resolve_symbol(self, symbol_or_key: str) -> str:
         """
-        Convert human trading symbol (e.g. 'RELIANCE', 'NIFTY 50', 'GOLD DEC FUT') into exact instrument key.
+        Convert human trading symbol (e.g. 'RELIANCE', 'NIFTY 50', 'GOLD DEC FUT',
+        or Google Finance 'INDEXNSE:NIFTY_50', 'NSE:AARTIIND') into exact instrument key.
         If already an instrument key (contains '|'), returns as is.
         """
-        clean = symbol_or_key.strip()
+        clean = self.clean_script_symbol(symbol_or_key)
         if "|" in clean:
             return clean
 

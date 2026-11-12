@@ -21,6 +21,8 @@ class QuoteItem:
         "low",
         "close",
         "prev_close",
+        "prev_high",
+        "prev_low",
         "change",
         "vwap",
         "volume",
@@ -39,6 +41,8 @@ class QuoteItem:
         self.low: float = 0.0
         self.close: float = 0.0  # Previous close
         self.prev_close: float = 0.0
+        self.prev_high: float = 0.0
+        self.prev_low: float = 0.0
         self.change: float = 0.0
         self.vwap: float = 0.0
         self.volume: int = 0
@@ -74,6 +78,8 @@ class QuoteItem:
             "high": round(self.high, 2),
             "low": round(self.low, 2),
             "close": round(self.close, 2),
+            "prev_high": round(self.prev_high, 2),
+            "prev_low": round(self.prev_low, 2),
             "volume": int(self.volume),
             "updated_at": self.updated_at,
             "ltt": self.ltt,
@@ -155,6 +161,8 @@ class MarketStore:
         volume: Optional[int] = None,
         vwap: Optional[float] = None,
         ltt: Optional[int] = None,
+        prev_high: Optional[float] = None,
+        prev_low: Optional[float] = None,
     ) -> None:
         """Update a quote item with latest tick/feed information."""
         with self._lock:
@@ -208,6 +216,20 @@ class MarketStore:
                         q.prev_close = val
                 except (ValueError, TypeError):
                     pass
+            if prev_high is not None:
+                try:
+                    val = float(prev_high)
+                    if val > 0:
+                        q.prev_high = val
+                except (ValueError, TypeError):
+                    pass
+            if prev_low is not None:
+                try:
+                    val = float(prev_low)
+                    if val > 0:
+                        q.prev_low = val
+                except (ValueError, TypeError):
+                    pass
             if volume is not None:
                 try:
                     val = int(float(volume))
@@ -229,6 +251,37 @@ class MarketStore:
                 q.change = q.ltp - ref_close
             elif q.ltp > 0 and q.open > 0:
                 q.change = q.ltp - q.open
+
+    def update_prev_day_stats(
+        self,
+        instrument_key: str,
+        prev_high: Optional[float] = None,
+        prev_low: Optional[float] = None,
+        prev_close: Optional[float] = None,
+    ) -> None:
+        """Update historical previous day stats (P HIGH, P. LOW, P.CLOSE)."""
+        with self._lock:
+            if instrument_key not in self._quotes:
+                self._quotes[instrument_key] = QuoteItem(instrument_key)
+                self._ordered_keys.append(instrument_key)
+            q = self._quotes[instrument_key]
+            if prev_high is not None and prev_high > 0:
+                q.prev_high = float(prev_high)
+            if prev_low is not None and prev_low > 0:
+                q.prev_low = float(prev_low)
+            if prev_close is not None and prev_close > 0:
+                q.close = float(prev_close)
+                q.prev_close = float(prev_close)
+
+    def get_quote_item(self, key_or_symbol: str) -> Optional[QuoteItem]:
+        """Return the internal QuoteItem reference by instrument_key or symbol."""
+        with self._lock:
+            if key_or_symbol in self._quotes:
+                return self._quotes[key_or_symbol]
+            key = self._key_by_symbol.get(key_or_symbol.upper())
+            if key and key in self._quotes:
+                return self._quotes[key]
+            return None
 
     def get_snapshot_matrix(self, include_headers: bool = True) -> List[List[Any]]:
         """Get 2D table representing all registered quotes for Excel or Google Sheets."""

@@ -15,13 +15,13 @@ excel:
   enabled: true
   # Mode: "auto" (tries xlwings active app, falls back to atomic file)
   mode: "auto"
-  # Target workbook path (relative or absolute)
-  file_path: "data/Upstox_Live_Market.xlsx"
+  # Target workbook path (points to "trial.xlsx" for BST sheet, or "data/Upstox_Live_Market.xlsx")
+  file_path: "trial.xlsx"
   # Target worksheet tab name
-  sheet_name: "LiveMarket"
+  sheet_name: "BST"
   # Refresh interval in seconds (0.5s - 1.0s recommended)
   refresh_interval_sec: 0.5
-  # Set to false so watchlist.txt is the single source of truth
+  # Set to false so watchlist.txt / SCRIPT column is the single source of truth
   sync_watchlist_from_excel: false
 
 google_sheets:
