@@ -82,6 +82,7 @@ def cmd_simulate(args):
         "GOLD DEC FUT": 138200.0,
         "SILVER DEC FUT": 181700.0,
         "CRUDEOIL NOV FUT": 8080.0,
+        "GOLD NOV 120000 PE": 110.0,
     }
 
     bst_syncer = None

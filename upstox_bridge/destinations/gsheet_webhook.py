@@ -6,7 +6,7 @@ import json
 import logging
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import requests
 
 from upstox_bridge.core.config import settings
@@ -44,6 +44,8 @@ class GoogleSheetWebhookSyncer:
         self._last_sync_time: float = 0.0
         self._sync_count: int = 0
         self._error_count: int = 0
+        self._last_sent_a: Optional[List[List[str]]] = None
+        self._last_sent_yz: Optional[List[List[float]]] = None
 
     def start(self) -> None:
         """Start background sync thread."""
@@ -117,15 +119,25 @@ class GoogleSheetWebhookSyncer:
                 yz_data.append([0.0, 0.0])
                 vol_data.append([0])
 
-        payload = {
+        payload: Dict[str, Any] = {
             "mode": "bst",
             "sheet_name": self.sheet_name,
             "start_row": min_row,
-            "a_data": a_data,
             "cg_data": cg_data,
-            "yz_data": yz_data,
             "vol_data": vol_data,
         }
+
+        # Send script names in Column A only on initial sync or when list of scripts changes
+        if a_data != self._last_sent_a:
+            payload["a_data"] = a_data
+
+        # Send previous day high/low only when data is available and changed
+        if yz_data != self._last_sent_yz and any(any(v > 0 for v in row) for row in yz_data):
+            payload["yz_data"] = yz_data
+
+        # Request script list from Google Sheet every 3rd cycle (~9s) to reduce Apps Script execution time
+        if self._sync_count % 3 == 0:
+            payload["sync_scripts"] = True
 
         return self._send_payload(payload, len(cg_data))
 
@@ -149,7 +161,7 @@ class GoogleSheetWebhookSyncer:
             self.webhook_url,
             json=payload,
             headers={"Content-Type": "application/json"},
-            timeout=8.0,
+            timeout=15.0,
             allow_redirects=True,
         )
         latency_ms = (time.time() - start_t) * 1000
@@ -157,6 +169,10 @@ class GoogleSheetWebhookSyncer:
         if resp.status_code == 200:
             self._last_sync_time = time.time()
             self._sync_count += 1
+            if "a_data" in payload:
+                self._last_sent_a = [row[:] for row in payload["a_data"]]
+            if "yz_data" in payload:
+                self._last_sent_yz = [row[:] for row in payload["yz_data"]]
             logger.debug(f"Google Sheet updated ({count} rows) in {latency_ms:.0f}ms.")
 
             # Bidirectional sync: Parse scripts returned from Google Sheets

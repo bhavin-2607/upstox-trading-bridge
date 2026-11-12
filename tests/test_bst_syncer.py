@@ -57,10 +57,12 @@ class TestBSTSyncer(unittest.TestCase):
             sheet_name="BST",
         )
         keys = syncer.scan_scripts()
-        # trial.xlsx has 228 rows of scripts starting at row 3
-        self.assertEqual(len(keys), 228)
+        # trial.xlsx has 232 rows of scripts starting at row 3 (including 4 MCX commodities)
+        self.assertEqual(len(keys), 232)
         self.assertIn("NSE_INDEX|Nifty 50", keys)
         self.assertIn("NSE_INDEX|Nifty Bank", keys)
+        self.assertIn("MCX_FO|495213", keys)
+        self.assertIn("MCX_FO|495214", keys)
 
     def test_sync_preserves_formulas(self):
         """Test that sync_cycle updates data cells while leaving formulas intact."""
@@ -103,16 +105,60 @@ class TestBSTSyncer(unittest.TestCase):
 
         # 2. Verify formula cells are completely intact
         trend_formula = ws.cell(3, 2).value  # TREND (Col B)
-        self.assertTrue(str(trend_formula).startswith("=if"), f"Formula corrupted: {trend_formula}")
+        self.assertTrue(str(trend_formula).lower().startswith("=if"), f"Formula corrupted: {trend_formula}")
 
         intra_formula = ws.cell(3, 10).value # INTRA (Col J)
-        self.assertTrue(str(intra_formula).startswith("=if"), f"Formula corrupted: {intra_formula}")
+        self.assertTrue(str(intra_formula).lower().startswith("=if"), f"Formula corrupted: {intra_formula}")
 
         entry_formula = ws.cell(3, 12).value # ENTRY (Col L)
-        self.assertTrue(str(entry_formula).startswith("=IF"), f"Formula corrupted: {entry_formula}")
+        self.assertTrue(str(entry_formula).lower().startswith("=if"), f"Formula corrupted: {entry_formula}")
 
         diff_formula = ws.cell(3, 21).value  # DIFF (Col U)
         self.assertEqual(diff_formula, "=$Y3-$Z3")
+
+        wb.close()
+
+    def test_mcx_commodity_stats_and_formulas(self):
+        """Test that MCX commodity rows (231-234) have P.HIGH, P.LOW and intact formulas."""
+        syncer = BSTSyncer(
+            market_store=self.store,
+            file_path=self.test_excel,
+            sheet_name="BST",
+        )
+        syncer.scan_scripts()
+
+        # Update quotes for GOLD DEC FUT (Row 231) and GOLD NOV 120000 PE (Row 234)
+        gold_fut_key = "MCX_FO|495213"
+        self.store.update_quote(
+            instrument_key=gold_fut_key,
+            ltp=140500.0,
+            open_price=139800.0,
+            high_price=141200.0,
+            low_price=139500.0,
+            close_price=139716.0,
+            prev_high=141990.0,
+            prev_low=139569.0,
+            volume=45000,
+        )
+
+        syncer._sync_cycle_openpyxl()
+
+        wb = openpyxl.load_workbook(self.test_excel, data_only=False)
+        ws = wb["BST"]
+
+        # Check Row 231 (GOLD DEC FUT)
+        self.assertEqual(ws.cell(231, 1).value, "GOLD DEC FUT")
+        self.assertEqual(ws.cell(231, 3).value, 140500.0)   # LTP
+        self.assertEqual(ws.cell(231, 7).value, 139716.0)   # P.CLOSE
+        self.assertEqual(ws.cell(231, 25).value, 141990.0)  # P HIGH
+        self.assertEqual(ws.cell(231, 26).value, 139569.0)  # P. LOW
+        self.assertEqual(ws.cell(231, 32).value, 45000)     # VOL
+
+        # Verify formulas in row 231
+        formula_b = ws.cell(231, 2).value
+        formula_h = ws.cell(231, 8).value
+        self.assertTrue(str(formula_b).lower().startswith("=if"), f"Formula B corrupted: {formula_b}")
+        self.assertEqual(formula_h, "=($Y231-$Z231)*11.8%")
 
         wb.close()
 

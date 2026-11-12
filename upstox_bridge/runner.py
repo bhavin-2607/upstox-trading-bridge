@@ -102,6 +102,11 @@ class BridgeRunner:
         for key, (ph, pl, pc) in stats.items():
             self.market_store.update_prev_day_stats(key, prev_high=ph, prev_low=pl, prev_close=pc)
 
+        if self.bst_syncer:
+            self.bst_syncer._last_yz_matrix = None
+        if self.gsheet_syncer:
+            self.gsheet_syncer._last_sent_yz = None
+
         if self.streamer and self.streamer.is_connected:
             current_keys = set(self.streamer.subscribed_keys)
             to_add = [k for k in all_keys if k not in current_keys]
@@ -120,6 +125,11 @@ class BridgeRunner:
             stats = self.historical_fetcher.fetch_all(new_keys)
             for key, (ph, pl, pc) in stats.items():
                 self.market_store.update_prev_day_stats(key, prev_high=ph, prev_low=pl, prev_close=pc)
+
+            if self.bst_syncer:
+                self.bst_syncer._last_yz_matrix = None
+            if self.gsheet_syncer:
+                self.gsheet_syncer._last_sent_yz = None
 
             if self.streamer and self.streamer.is_connected:
                 self.streamer.subscribe(new_keys)
@@ -197,6 +207,10 @@ class BridgeRunner:
             for key, (ph, pl, pc) in stats.items():
                 self.market_store.update_prev_day_stats(key, prev_high=ph, prev_low=pl, prev_close=pc)
             print(f"[OK] Loaded previous day stats for {len(stats)} instruments.")
+            if self.bst_syncer:
+                self.bst_syncer._last_yz_matrix = None
+            if self.gsheet_syncer:
+                self.gsheet_syncer._last_sent_yz = None
         else:
             print("[*] Mode: Standard Live Watchlist Table")
             keys = self.initialize_instruments()

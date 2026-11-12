@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import quote
 import requests
 
 from upstox_bridge.core.config import settings
@@ -64,26 +65,33 @@ class HistoricalStatsFetcher:
         today_str = datetime.now().strftime("%Y-%m-%d")
         from_str = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
 
-        url = f"https://api.upstox.com/v2/historical-candle/{instrument_key}/day/{today_str}/{from_str}"
+        # URL-encode the instrument key so pipes (e.g. MCX_FO|495213 -> MCX_FO%7C495213) are safe
+        encoded_key = quote(instrument_key, safe="")
+        url = f"https://api.upstox.com/v2/historical-candle/{encoded_key}/day/{today_str}/{from_str}"
         headers = {"Accept": "application/json"}
         if settings.upstox_access_token:
             headers["Authorization"] = f"Bearer {settings.upstox_access_token}"
 
-        try:
-            resp = requests.get(url, headers=headers, timeout=6)
-            if resp.status_code == 200:
-                candles = resp.json().get("data", {}).get("candles", [])
-                if candles:
-                    # Candle: [timestamp, open, high, low, close, volume, open_interest]
-                    # If candle[0] timestamp starts with today's date, then candle[1] is yesterday
-                    c0_date = candles[0][0][:10]
-                    target_candle = candles[1] if (c0_date == today_str and len(candles) > 1) else candles[0]
-                    high_p = float(target_candle[2])
-                    low_p = float(target_candle[3])
-                    close_p = float(target_candle[4])
-                    return instrument_key, high_p, low_p, close_p
-        except Exception as e:
-            logger.debug(f"Could not fetch historical candle for {instrument_key}: {e}")
+        for attempt in range(2):
+            try:
+                resp = requests.get(url, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    candles = resp.json().get("data", {}).get("candles", [])
+                    if candles:
+                        # Candle: [timestamp, open, high, low, close, volume, open_interest]
+                        # If candle[0] timestamp starts with today's date, then candle[1] is yesterday
+                        c0_date = candles[0][0][:10]
+                        target_candle = candles[1] if (c0_date == today_str and len(candles) > 1) else candles[0]
+                        high_p = float(target_candle[2])
+                        low_p = float(target_candle[3])
+                        close_p = float(target_candle[4])
+                        return instrument_key, high_p, low_p, close_p
+                    break
+                else:
+                    logger.debug(f"Historical candle for {instrument_key} returned {resp.status_code}: {resp.text[:100]}")
+            except Exception as e:
+                logger.debug(f"Attempt {attempt + 1} failed for historical candle {instrument_key}: {e}")
+                time.sleep(0.3)
 
         return instrument_key, None, None, None
 

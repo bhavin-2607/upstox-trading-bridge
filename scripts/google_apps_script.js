@@ -1,10 +1,7 @@
 /**
  * ==============================================================================
  * UPSTOX LIVE MARKET DATA GOOGLE APPS SCRIPT WEBHOOK (Zero GCP Setup)
- * Supports both:
- * 1. Standard LiveMarket table mode (with header styling & full table sync)
- * 2. In-Place BST Sheet mode (updates LTP, OPEN, HIGH, LOW, P.CLOSE, P HIGH, P. LOW, vol
- *    without touching ANY formulas in columns B, H-X, AA-AE, AG-AQ)
+ * High-Performance Optimized Version (Sub-Second Execution, No Read Timeouts)
  * ==============================================================================
  *
  * HOW TO UPDATE IN GOOGLE APPS SCRIPT:
@@ -40,47 +37,46 @@ function doPost(e) {
     // ========================================================================
     if (payload.mode === "bst") {
       var startRow = payload.start_row || 3;
-      var aData = payload.a_data;     // Col A: [SCRIPT] clean normal symbols
+      var aData = payload.a_data;     // Col A: [SCRIPT] clean normal symbols (optional)
       var cgData = payload.cg_data;   // Cols C to G: [LTP, OPEN, HIGH, LOW, P.CLOSE]
-      var yzData = payload.yz_data;   // Cols Y to Z: [P HIGH, P. LOW]
-      var volData = payload.vol_data; // Col AF: [vol]
+      var yzData = payload.yz_data;   // Cols Y to Z: [P HIGH, P. LOW] (optional)
+      var volData = payload.vol_data; // Col AF: [vol] (optional)
 
       var updatedRows = 0;
 
-      // 1. In-place update script names in Col A with clean normal symbols (no prefixes)
+      // 1. In-place update script names in Col A (only when changed/requested)
       if (aData && aData.length > 0) {
         sheet.getRange(startRow, 1, aData.length, 1).setValues(aData);
       }
 
-      // 2. In-place update price columns C to G (5 contiguous columns)
+      // 2. In-place update live price columns C to G (5 contiguous columns)
       if (cgData && cgData.length > 0) {
         var numRows = cgData.length;
         sheet.getRange(startRow, 3, numRows, 5).setValues(cgData);
-        sheet.getRange(startRow, 3, numRows, 5).setNumberFormat("#,##0.00");
         updatedRows = numRows;
       }
 
-      // 3. In-place update previous day high/low columns Y to Z (2 contiguous columns)
+      // 3. In-place update previous day high/low columns Y to Z (only when changed/requested)
       if (yzData && yzData.length > 0) {
         sheet.getRange(startRow, 25, yzData.length, 2).setValues(yzData);
-        sheet.getRange(startRow, 25, yzData.length, 2).setNumberFormat("#,##0.00");
       }
 
       // 4. In-place update volume column AF (Col 32)
       if (volData && volData.length > 0) {
         sheet.getRange(startRow, 32, volData.length, 1).setValues(volData);
-        sheet.getRange(startRow, 32, volData.length, 1).setNumberFormat("#,##0");
       }
 
-      // 5. Read current scripts from Column A to return back to Python (Bidirectional Sync)
-      var lastRow = sheet.getLastRow();
+      // 5. Read current scripts from Column A for Bidirectional Sync (if requested)
       var currentScripts = [];
-      if (lastRow >= startRow) {
-        var colAVals = sheet.getRange(startRow, 1, lastRow - startRow + 1, 1).getValues();
-        for (var i = 0; i < colAVals.length; i++) {
-          var val = colAVals[i][0];
-          if (val !== null && val !== undefined && String(val).trim() !== "") {
-            currentScripts.push([startRow + i, String(val).trim()]);
+      if (payload.sync_scripts) {
+        var lastRow = sheet.getLastRow();
+        if (lastRow >= startRow) {
+          var colAVals = sheet.getRange(startRow, 1, lastRow - startRow + 1, 1).getValues();
+          for (var i = 0; i < colAVals.length; i++) {
+            var val = colAVals[i][0];
+            if (val !== null && val !== undefined && String(val).trim() !== "") {
+              currentScripts.push([startRow + i, String(val).trim()]);
+            }
           }
         }
       }
@@ -122,15 +118,6 @@ function doPost(e) {
     headerRange.setFontColor("#FFFFFF");
     headerRange.setFontWeight("bold");
     headerRange.setHorizontalAlignment("center");
-
-    // Number formatting for data rows (LTP, Change, VWAP, Open, High, Low, Close)
-    if (numRows > 1) {
-      sheet.getRange(2, 3, numRows - 1, 7).setNumberFormat("#,##0.00");
-      sheet.getRange(2, 10, numRows - 1, 1).setNumberFormat("#,##0");
-      sheet.getRange(2, 1, numRows - 1, 2).setHorizontalAlignment("left");
-      sheet.getRange(2, 3, numRows - 1, 8).setHorizontalAlignment("right");
-      sheet.getRange(2, 11, numRows - 1, 1).setHorizontalAlignment("center");
-    }
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",

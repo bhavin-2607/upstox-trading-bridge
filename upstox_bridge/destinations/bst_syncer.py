@@ -58,6 +58,7 @@ class BSTSyncer:
         self._known_scripts_raw: Dict[int, str] = {}    # row_idx -> raw_script_string
         self._last_scan_time = 0.0
         self._stats_written = False
+        self._last_yz_matrix: Optional[List[List[Optional[float]]]] = None
 
         self._use_xlwings = False
         self._xw_book = None
@@ -172,6 +173,9 @@ class BSTSyncer:
                 del self._row_map[old_row]
                 self._known_scripts_raw.pop(old_row, None)
 
+        if changed:
+            self._last_yz_matrix = None
+
         if changed and new_keys and self.on_scripts_detected:
             all_keys = [k for k, _ in self._row_map.values()]
             self.on_scripts_detected(all_keys)
@@ -201,6 +205,7 @@ class BSTSyncer:
                 excel_updates.append((row_idx, clean_sym))
 
         if excel_updates:
+            self._last_yz_matrix = None
             logger.info(f"Writing {len(excel_updates)} new/updated scripts from Google Sheets into local Excel...")
             if self._use_xlwings and self._xw_sheet:
                 try:
@@ -239,9 +244,6 @@ class BSTSyncer:
         # 3. Block AF: [vol]
         block_af: List[List[Optional[int]]] = []
 
-        needs_yz_update = not self._stats_written
-        has_stats_data = False
-
         for r in range(min_row, max_row + 1):
             if r in self._row_map:
                 key, _ = self._row_map[r]
@@ -256,9 +258,6 @@ class BSTSyncer:
 
                     block_cg.append([ltp, open_p, high_p, low_p, close_p])
                     block_af.append([vol])
-
-                    if item.prev_high or item.prev_low:
-                        has_stats_data = True
                     block_yz.append([
                         round(item.prev_high, 2) if item.prev_high else None,
                         round(item.prev_low, 2) if item.prev_low else None,
@@ -279,9 +278,10 @@ class BSTSyncer:
             # 2. Update live volume block AF (1 column)
             self._xw_sheet.range(f"AF{min_row}:AF{max_row}").value = block_af
 
-            # 3. Update previous day high/low block Y:Z (written once or when data arrives)
-            if needs_yz_update and has_stats_data:
+            # 3. Update previous day high/low block Y:Z (written when values arrive or change)
+            if block_yz != self._last_yz_matrix and any(any(v is not None and v > 0 for v in row) for row in block_yz):
                 self._xw_sheet.range(f"Y{min_row}:Z{max_row}").value = block_yz
+                self._last_yz_matrix = [row[:] for row in block_yz]
                 self._stats_written = True
 
         except Exception as e:
@@ -313,9 +313,9 @@ class BSTSyncer:
                     ws.cell(r, self.COL_LOW, round(item.low, 2))
                 if item.close:
                     ws.cell(r, self.COL_PCLOSE, round(item.close, 2))
-                if item.prev_high:
+                if item.prev_high is not None and item.prev_high > 0:
                     ws.cell(r, self.COL_PHIGH, round(item.prev_high, 2))
-                if item.prev_low:
+                if item.prev_low is not None and item.prev_low > 0:
                     ws.cell(r, self.COL_PLOW, round(item.prev_low, 2))
                 if item.volume:
                     ws.cell(r, self.COL_VOL, int(item.volume))
