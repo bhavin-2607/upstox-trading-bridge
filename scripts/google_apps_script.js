@@ -66,11 +66,25 @@ function doPost(e) {
         sheet.getRange(startRow, 32, volData.length, 1).setNumberFormat("#,##0");
       }
 
+      // 4. Read current scripts from Column A to return back to Python (Bidirectional Sync)
+      var lastRow = sheet.getLastRow();
+      var currentScripts = [];
+      if (lastRow >= startRow) {
+        var colAVals = sheet.getRange(startRow, 1, lastRow - startRow + 1, 1).getValues();
+        for (var i = 0; i < colAVals.length; i++) {
+          var val = colAVals[i][0];
+          if (val !== null && val !== undefined && String(val).trim() !== "") {
+            currentScripts.push([startRow + i, String(val).trim()]);
+          }
+        }
+      }
+
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
         mode: "bst",
         sheet: targetSheetName,
         rows_updated: updatedRows,
+        scripts: currentScripts,
         timestamp: new Date().toISOString()
       })).setMimeType(ContentService.MimeType.JSON);
     }

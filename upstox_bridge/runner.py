@@ -109,6 +109,21 @@ class BridgeRunner:
                 self.streamer.subscribe(to_add)
                 logger.info(f"Dynamically subscribed to {len(to_add)} newly added keys from BST sheet.")
 
+    def on_gsheet_scripts_received(self, gsheet_scripts: List[tuple[int, str]]) -> None:
+        """Callback when Google Sheet webhook returns current scripts from Column A (Bidirectional Sync)."""
+        if not self.is_bst_mode or not self.bst_syncer:
+            return
+
+        new_keys = self.bst_syncer.inject_scripts_from_external(gsheet_scripts)
+        if new_keys:
+            logger.info(f"[Google Sheets -> Excel] Discovered {len(new_keys)} new symbol(s) added from Google Sheet: {new_keys}")
+            stats = self.historical_fetcher.fetch_all(new_keys)
+            for key, (ph, pl, pc) in stats.items():
+                self.market_store.update_prev_day_stats(key, prev_high=ph, prev_low=pl, prev_close=pc)
+
+            if self.streamer and self.streamer.is_connected:
+                self.streamer.subscribe(new_keys)
+
     def reload_from_watchlist_txt(self) -> None:
         """Dynamically reload symbols from watchlist.txt when user edits the file."""
         new_symbols = settings.read_watchlist_txt()
@@ -226,6 +241,7 @@ class BridgeRunner:
                 market_store=self.market_store,
                 mode=gsheet_mode,
                 bst_syncer=self.bst_syncer,
+                on_gsheet_scripts_detected=self.on_gsheet_scripts_received,
             )
             self.gsheet_syncer.start()
         elif settings.gsheet_enabled and not settings.gsheet_webhook_url:

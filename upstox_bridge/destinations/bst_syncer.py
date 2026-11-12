@@ -171,6 +171,50 @@ class BSTSyncer:
 
         return new_keys
 
+    def inject_scripts_from_external(self, external_scripts: List[Tuple[int, str]]) -> List[str]:
+        """
+        Inject or synchronize scripts received from Google Sheets into local BST syncer & Excel.
+        Returns list of newly discovered instrument keys.
+        """
+        new_keys: List[str] = []
+        excel_updates: List[Tuple[int, str]] = []
+
+        for row_idx, raw_val in external_scripts:
+            cleaned_val = str(raw_val).strip()
+            if not cleaned_val:
+                continue
+
+            if self._known_scripts_raw.get(row_idx) != cleaned_val:
+                self._known_scripts_raw[row_idx] = cleaned_val
+                clean_sym = self.instrument_master.clean_script_symbol(cleaned_val)
+                key = self.instrument_master.resolve_symbol(cleaned_val)
+                self._row_map[row_idx] = (key, clean_sym)
+                self.market_store.register_instrument(key, clean_sym)
+                new_keys.append(key)
+                excel_updates.append((row_idx, cleaned_val))
+
+        if excel_updates:
+            logger.info(f"Writing {len(excel_updates)} new/updated scripts from Google Sheets into local Excel...")
+            if self._use_xlwings and self._xw_sheet:
+                try:
+                    for r, val in excel_updates:
+                        self._xw_sheet.range(f"A{r}").value = val
+                except Exception as e:
+                    logger.debug(f"xlwings external inject error: {e}")
+            else:
+                try:
+                    wb = openpyxl.load_workbook(self.file_path, data_only=False)
+                    if self.sheet_name in wb.sheetnames:
+                        ws = wb[self.sheet_name]
+                        for r, val in excel_updates:
+                            ws.cell(r, self.COL_SCRIPT, val)
+                        wb.save(self.file_path)
+                    wb.close()
+                except Exception as e:
+                    logger.debug(f"openpyxl external inject error: {e}")
+
+        return new_keys
+
     def _sync_cycle_xlwings(self) -> None:
         """High-speed batch slice update in active Excel via xlwings."""
         if not self._row_map or not self._xw_sheet:

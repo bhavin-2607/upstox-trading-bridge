@@ -29,6 +29,7 @@ class GoogleSheetWebhookSyncer:
         refresh_sec: Optional[float] = None,
         mode: str = "standard",
         bst_syncer: Optional[Any] = None,
+        on_gsheet_scripts_detected: Optional[Callable[[List[Tuple[int, str]]], None]] = None,
     ):
         self.market_store = market_store
         self.webhook_url = webhook_url if webhook_url is not None else settings.gsheet_webhook_url
@@ -36,6 +37,7 @@ class GoogleSheetWebhookSyncer:
         self.refresh_sec = refresh_sec if refresh_sec is not None else settings.gsheet_refresh_sec
         self.mode = mode
         self.bst_syncer = bst_syncer
+        self.on_gsheet_scripts_detected = on_gsheet_scripts_detected
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -152,6 +154,18 @@ class GoogleSheetWebhookSyncer:
             self._last_sync_time = time.time()
             self._sync_count += 1
             logger.debug(f"Google Sheet updated ({count} rows) in {latency_ms:.0f}ms.")
+
+            # Bidirectional sync: Parse scripts returned from Google Sheets
+            if self.mode == "bst" and self.on_gsheet_scripts_detected:
+                try:
+                    res_json = resp.json()
+                    scripts_raw = res_json.get("scripts", [])
+                    if scripts_raw:
+                        scripts = [(int(item[0]), str(item[1])) for item in scripts_raw if len(item) >= 2]
+                        self.on_gsheet_scripts_detected(scripts)
+                except Exception as e:
+                    logger.debug(f"Could not parse scripts from Google Sheet response: {e}")
+
             return True
         else:
             self._error_count += 1

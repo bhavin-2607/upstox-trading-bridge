@@ -22,6 +22,7 @@ data/*.tmp.xlsx
 # Downloaded instrument cache (~15MB compressed, 100MB+ uncompressed)
 data/instruments_master.json
 data/instruments_master.json.gz
+data/historical_prev_stats_cache.json
 
 # macOS system files
 .DS_Store
