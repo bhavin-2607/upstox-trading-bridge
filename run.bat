@@ -28,7 +28,7 @@ echo.
 
 call .venv\Scripts\python.exe main.py run %*
 
-if %ERRORLEVEL% neq 0 (
+if errorlevel 1 (
     echo.
     echo ==============================================================================
     echo Bridge stopped with error code %ERRORLEVEL%.
