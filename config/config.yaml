@@ -29,8 +29,8 @@ google_sheets:
   enabled: true
   # Refresh throttle interval in seconds (3.0s - 5.0s recommended to avoid quotas)
   refresh_interval_sec: 3.0
-  # Target sheet name inside your Google Sheet
-  sheet_name: "LiveMarket"
+  # Target sheet name inside your Google Sheet ("BST" for trial sheet, or "LiveMarket")
+  sheet_name: "BST"
   # Request timeout in seconds
   timeout_sec: 5.0
 

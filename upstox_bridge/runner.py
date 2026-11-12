@@ -221,7 +221,12 @@ class BridgeRunner:
 
         # 5. Start Google Sheets Syncer
         if settings.gsheet_enabled and settings.gsheet_webhook_url:
-            self.gsheet_syncer = GoogleSheetWebhookSyncer(market_store=self.market_store)
+            gsheet_mode = "bst" if self.is_bst_mode else "standard"
+            self.gsheet_syncer = GoogleSheetWebhookSyncer(
+                market_store=self.market_store,
+                mode=gsheet_mode,
+                bst_syncer=self.bst_syncer,
+            )
             self.gsheet_syncer.start()
         elif settings.gsheet_enabled and not settings.gsheet_webhook_url:
             logger.info("Google Sheets push skipped (no webhook URL provided).")

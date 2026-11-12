@@ -151,7 +151,11 @@ def cmd_simulate(args):
     # Start Google Sheet syncer if webhook provided
     gsheet = None
     if settings.gsheet_webhook_url:
-        gsheet = GoogleSheetWebhookSyncer(market_store=store)
+        gsheet = GoogleSheetWebhookSyncer(
+            market_store=store,
+            mode="bst" if is_bst else "standard",
+            bst_syncer=bst_syncer,
+        )
         gsheet.start()
     else:
         print("\nNote: GOOGLE_SHEET_WEBHOOK_URL is not set in .env. Skipping Google Sheets push.")

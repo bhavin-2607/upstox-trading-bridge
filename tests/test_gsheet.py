@@ -34,6 +34,35 @@ class TestGoogleSheetWebhookSyncer(unittest.TestCase):
         self.assertEqual(len(payload["data"]), 2)  # headers + 1 row
         self.assertEqual(payload["data"][1][0], "NIFTY 50")
 
+    @patch("requests.post")
+    def test_sync_bst_mode(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = '{"status": "success", "mode": "bst"}'
+        mock_post.return_value = mock_resp
+
+        mock_bst = MagicMock()
+        mock_bst._row_map = {3: ("NSE_INDEX|Nifty 50", "NIFTY 50")}
+
+        bst_gsyncer = GoogleSheetWebhookSyncer(
+            market_store=self.store,
+            webhook_url="https://script.google.com/macros/s/TEST/exec",
+            sheet_name="BST",
+            mode="bst",
+            bst_syncer=mock_bst,
+        )
+
+        success = bst_gsyncer.sync_once()
+        self.assertTrue(success)
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        payload = kwargs["json"]
+        self.assertEqual(payload["mode"], "bst")
+        self.assertEqual(payload["sheet_name"], "BST")
+        self.assertEqual(payload["start_row"], 3)
+        self.assertEqual(len(payload["cg_data"]), 1)
+        self.assertEqual(payload["cg_data"][0][0], 24150.0)  # LTP
+
     def test_empty_webhook_url_error(self):
         empty_syncer = GoogleSheetWebhookSyncer(market_store=self.store, webhook_url="")
         with self.assertRaises(ValueError):

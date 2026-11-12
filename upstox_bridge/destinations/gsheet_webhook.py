@@ -6,7 +6,7 @@ import json
 import logging
 import threading
 import time
-from typing import Optional
+from typing import Any, Dict, List, Optional
 import requests
 
 from upstox_bridge.core.config import settings
@@ -16,7 +16,10 @@ logger = logging.getLogger("GoogleSheetSyncer")
 
 
 class GoogleSheetWebhookSyncer:
-    """Synchronizes live market quotes to Google Sheets via standard HTTP POST to Apps Script Webhook."""
+    """
+    Synchronizes live market quotes to Google Sheets via standard HTTP POST to Apps Script Webhook.
+    Supports both standard LiveMarket tables and in-place BST sheet updates (zero formula damage).
+    """
 
     def __init__(
         self,
@@ -24,11 +27,15 @@ class GoogleSheetWebhookSyncer:
         webhook_url: Optional[str] = None,
         sheet_name: Optional[str] = None,
         refresh_sec: Optional[float] = None,
+        mode: str = "standard",
+        bst_syncer: Optional[Any] = None,
     ):
         self.market_store = market_store
         self.webhook_url = webhook_url if webhook_url is not None else settings.gsheet_webhook_url
         self.sheet_name = sheet_name or settings.gsheet_sheet_name
         self.refresh_sec = refresh_sec if refresh_sec is not None else settings.gsheet_refresh_sec
+        self.mode = mode
+        self.bst_syncer = bst_syncer
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -39,7 +46,7 @@ class GoogleSheetWebhookSyncer:
     def start(self) -> None:
         """Start background sync thread."""
         if not self.webhook_url:
-            logger.warning("GOOGLE_SHEET_WEBHOOK_URL is not set. Google Sheets sync is disabled.")
+            logger.info("Google Sheets sync disabled (no webhook URL provided).")
             return
 
         if self._running:
@@ -48,7 +55,7 @@ class GoogleSheetWebhookSyncer:
         self._running = True
         self._thread = threading.Thread(target=self._run_loop, name="GSheetSyncWorker", daemon=True)
         self._thread.start()
-        logger.info(f"Google Sheet syncer started (Interval: {self.refresh_sec}s).")
+        logger.info(f"Google Sheet syncer started (Mode: {self.mode}, Interval: {self.refresh_sec}s).")
 
     def stop(self) -> None:
         """Stop background sync thread."""
@@ -62,30 +69,89 @@ class GoogleSheetWebhookSyncer:
         if not self.webhook_url:
             raise ValueError("GOOGLE_SHEET_WEBHOOK_URL is not configured in .env")
 
+        if self.mode == "bst" and self.bst_syncer:
+            return self._sync_bst_mode()
+        else:
+            return self._sync_standard_mode()
+
+    def _sync_bst_mode(self) -> bool:
+        """In-place slice update to Google Sheets BST sheet."""
+        row_map = self.bst_syncer._row_map if self.bst_syncer else {}
+        if not row_map:
+            return True
+
+        min_row = min(row_map.keys())
+        max_row = max(row_map.keys())
+
+        cg_data: List[List[float]] = []
+        yz_data: List[List[float]] = []
+        vol_data: List[List[int]] = []
+
+        for r in range(min_row, max_row + 1):
+            if r in row_map:
+                key, _ = row_map[r]
+                item = self.market_store.get_quote_item(key)
+                if item:
+                    ltp = round(item.ltp, 2) if item.ltp else 0.0
+                    open_p = round(item.open, 2) if item.open else 0.0
+                    high_p = round(item.high, 2) if item.high else 0.0
+                    low_p = round(item.low, 2) if item.low else 0.0
+                    close_p = round(item.close, 2) if item.close else 0.0
+                    cg_data.append([ltp, open_p, high_p, low_p, close_p])
+                    yz_data.append([
+                        round(item.prev_high, 2) if item.prev_high else 0.0,
+                        round(item.prev_low, 2) if item.prev_low else 0.0,
+                    ])
+                    vol_data.append([int(item.volume)])
+                else:
+                    cg_data.append([0.0, 0.0, 0.0, 0.0, 0.0])
+                    yz_data.append([0.0, 0.0])
+                    vol_data.append([0])
+            else:
+                cg_data.append([0.0, 0.0, 0.0, 0.0, 0.0])
+                yz_data.append([0.0, 0.0])
+                vol_data.append([0])
+
+        payload = {
+            "mode": "bst",
+            "sheet_name": self.sheet_name,
+            "start_row": min_row,
+            "cg_data": cg_data,
+            "yz_data": yz_data,
+            "vol_data": vol_data,
+        }
+
+        return self._send_payload(payload, len(cg_data))
+
+    def _sync_standard_mode(self) -> bool:
+        """Standard full-table sync to Google Sheets."""
         matrix = self.market_store.get_snapshot_matrix(include_headers=True)
         if len(matrix) <= 1:
-            # Only headers, no data yet
             return True
 
         payload = {
+            "mode": "standard",
             "sheet_name": self.sheet_name,
             "data": matrix,
         }
 
+        return self._send_payload(payload, len(matrix) - 1)
+
+    def _send_payload(self, payload: dict, count: int) -> bool:
         start_t = time.time()
         resp = requests.post(
             self.webhook_url,
             json=payload,
             headers={"Content-Type": "application/json"},
             timeout=8.0,
-            allow_redirects=True,  # Google Apps Script redirects with 302 to output
+            allow_redirects=True,
         )
         latency_ms = (time.time() - start_t) * 1000
 
         if resp.status_code == 200:
             self._last_sync_time = time.time()
             self._sync_count += 1
-            logger.debug(f"Google Sheet updated ({len(matrix)-1} symbols) in {latency_ms:.0f}ms.")
+            logger.debug(f"Google Sheet updated ({count} rows) in {latency_ms:.0f}ms.")
             return True
         else:
             self._error_count += 1
@@ -114,11 +180,11 @@ class GoogleSheetWebhookSyncer:
         try:
             sample_data = [
                 MarketStore.HEADERS,
-                ["TEST_NIFTY", "NSE_INDEX|Nifty 50", 24000.0, 100.0, "+0.42%", 23900.0, 24050.0, 23850.0, 23900.0, 100000, "TEST"],
+                ["TEST_NIFTY", "NSE_INDEX|Nifty 50", 24000.0, 100.0, 24020.0, 23900.0, 24050.0, 23850.0, 23900.0, 100000, "TEST"],
             ]
             resp = requests.post(
                 self.webhook_url,
-                json={"sheet_name": self.sheet_name, "data": sample_data},
+                json={"mode": "standard", "sheet_name": self.sheet_name, "data": sample_data},
                 timeout=10.0,
                 allow_redirects=True,
             )
@@ -149,7 +215,10 @@ class GoogleSheetWebhookSyncer:
                 return {
                     "success": False,
                     "status_code": resp.status_code,
-                    "error": resp.text,
+                    "error": f"HTTP {resp.status_code}: {resp.text[:300]}",
                 }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {
+                "success": False,
+                "error": f"Connection failed: {str(e)}",
+            }

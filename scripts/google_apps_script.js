@@ -1,6 +1,10 @@
 /**
  * ==============================================================================
  * UPSTOX LIVE MARKET DATA GOOGLE APPS SCRIPT WEBHOOK (Zero GCP Setup)
+ * Supports both:
+ * 1. Standard LiveMarket table mode (with header styling & full table sync)
+ * 2. In-Place BST Sheet mode (updates LTP, OPEN, HIGH, LOW, P.CLOSE, P HIGH, P. LOW, vol
+ *    without touching ANY formulas in columns B, H-X, AA-AE, AG-AQ)
  * ==============================================================================
  *
  * HOW TO UPDATE IN GOOGLE APPS SCRIPT:
@@ -23,15 +27,6 @@ function doPost(e) {
 
     var payload = JSON.parse(e.postData.contents);
     var targetSheetName = payload.sheet_name || "LiveMarket";
-    var rows = payload.data; // 2D array: [[Symbol, Instrument Key, LTP, Change, VWAP, Open, High, Low, Close, Volume, Updated At], ...]
-
-    if (!rows || rows.length === 0) {
-      return ContentService.createTextOutput(JSON.stringify({
-        status: "ok",
-        message: "Empty payload, nothing to update"
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
-
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(targetSheetName);
 
@@ -40,10 +35,61 @@ function doPost(e) {
       sheet = ss.insertSheet(targetSheetName);
     }
 
+    // ========================================================================
+    // MODE 1: BST Custom Trading Sheet In-Place Updates (Zero Formula Damage)
+    // ========================================================================
+    if (payload.mode === "bst") {
+      var startRow = payload.start_row || 3;
+      var cgData = payload.cg_data;   // Cols C to G: [LTP, OPEN, HIGH, LOW, P.CLOSE]
+      var yzData = payload.yz_data;   // Cols Y to Z: [P HIGH, P. LOW]
+      var volData = payload.vol_data; // Col AF: [vol]
+
+      var updatedRows = 0;
+
+      // 1. In-place update price columns C to G (5 contiguous columns)
+      if (cgData && cgData.length > 0) {
+        var numRows = cgData.length;
+        sheet.getRange(startRow, 3, numRows, 5).setValues(cgData);
+        sheet.getRange(startRow, 3, numRows, 5).setNumberFormat("#,##0.00");
+        updatedRows = numRows;
+      }
+
+      // 2. In-place update previous day high/low columns Y to Z (2 contiguous columns)
+      if (yzData && yzData.length > 0) {
+        sheet.getRange(startRow, 25, yzData.length, 2).setValues(yzData);
+        sheet.getRange(startRow, 25, yzData.length, 2).setNumberFormat("#,##0.00");
+      }
+
+      // 3. In-place update volume column AF (Col 32)
+      if (volData && volData.length > 0) {
+        sheet.getRange(startRow, 32, volData.length, 1).setValues(volData);
+        sheet.getRange(startRow, 32, volData.length, 1).setNumberFormat("#,##0");
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        mode: "bst",
+        sheet: targetSheetName,
+        rows_updated: updatedRows,
+        timestamp: new Date().toISOString()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ========================================================================
+    // MODE 2: Standard Live Watchlist Table Mode
+    // ========================================================================
+    var rows = payload.data;
+    if (!rows || rows.length === 0) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "ok",
+        message: "Empty payload, nothing to update"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     var numRows = rows.length;
     var numCols = rows[0].length;
 
-    // Clear old rows/duplicates completely
+    // Clear old rows/duplicates completely for standard table
     sheet.clearContents();
 
     // Write all live data atomically in one batch
@@ -59,11 +105,8 @@ function doPost(e) {
 
     // Number formatting for data rows (LTP, Change, VWAP, Open, High, Low, Close)
     if (numRows > 1) {
-      // Prices: Cols 3 to 9 (LTP, Change, VWAP, Open, High, Low, Close) formatted as decimals
       sheet.getRange(2, 3, numRows - 1, 7).setNumberFormat("#,##0.00");
-      // Volume: Col 10 formatted as integer
       sheet.getRange(2, 10, numRows - 1, 1).setNumberFormat("#,##0");
-      // Text alignments
       sheet.getRange(2, 1, numRows - 1, 2).setHorizontalAlignment("left");
       sheet.getRange(2, 3, numRows - 1, 8).setHorizontalAlignment("right");
       sheet.getRange(2, 11, numRows - 1, 1).setHorizontalAlignment("center");
@@ -71,6 +114,7 @@ function doPost(e) {
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
+      mode: "standard",
       rows_updated: numRows,
       timestamp: new Date().toISOString()
     })).setMimeType(ContentService.MimeType.JSON);
