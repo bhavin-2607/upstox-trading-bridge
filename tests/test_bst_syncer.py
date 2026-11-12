@@ -34,15 +34,20 @@ class TestBSTSyncer(unittest.TestCase):
         self.assertEqual(self.master.clean_script_symbol("GOLD DEC FUT"), "GOLD DEC FUT")
 
     def test_resolve_bst_symbols(self):
-        """Test resolving Google Finance formatted symbols to Upstox instrument keys."""
-        k1 = self.master.resolve_symbol("INDEXNSE:NIFTY_50")
-        self.assertEqual(k1, "NSE_INDEX|Nifty 50")
+        """Test resolving both normal human symbols and Google Finance formatted symbols."""
+        # Normal human symbols (no prefixes needed!)
+        self.assertEqual(self.master.resolve_symbol("NIFTY 50"), "NSE_INDEX|Nifty 50")
+        self.assertEqual(self.master.resolve_symbol("NIFTY BANK"), "NSE_INDEX|Nifty Bank")
+        self.assertEqual(self.master.resolve_symbol("RELIANCE"), "NSE_EQ|INE002A01018")
+        self.assertEqual(self.master.resolve_symbol("GOLD DEC FUT"), "MCX_FO|495213")
+        self.assertEqual(self.master.resolve_symbol("SILVER DEC FUT"), "MCX_FO|495214")
+        self.assertEqual(self.master.resolve_symbol("CRUDEOIL NOV FUT"), "MCX_FO|573422")
+        self.assertEqual(self.master.resolve_symbol("GOLD NOV 120000 PE"), "MCX_FO|579333")
 
-        k2 = self.master.resolve_symbol("INDEXNSE:NIFTY_BANK")
-        self.assertEqual(k2, "NSE_INDEX|Nifty Bank")
-
-        k3 = self.master.resolve_symbol("NSE:RELIANCE")
-        self.assertEqual(k3, "NSE_EQ|INE002A01018")
+        # Backward compatibility with Google Finance prefixes
+        self.assertEqual(self.master.resolve_symbol("INDEXNSE:NIFTY_50"), "NSE_INDEX|Nifty 50")
+        self.assertEqual(self.master.resolve_symbol("INDEXNSE:NIFTY_BANK"), "NSE_INDEX|Nifty Bank")
+        self.assertEqual(self.master.resolve_symbol("NSE:RELIANCE"), "NSE_EQ|INE002A01018")
 
     def test_scan_scripts_from_trial(self):
         """Test scanning scripts from trial.xlsx BST sheet."""

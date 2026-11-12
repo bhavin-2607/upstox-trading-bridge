@@ -158,6 +158,13 @@ class BSTSyncer:
                 self.market_store.register_instrument(key, clean_sym)
                 new_keys.append(key)
 
+                # If raw_val had Google Finance or broker prefixes, auto-clean it in the sheet
+                if clean_sym != raw_val and self._use_xlwings and self._xw_sheet:
+                    try:
+                        self._xw_sheet.range(f"A{row_idx}").value = clean_sym
+                    except Exception:
+                        pass
+
         # Check for deleted rows
         for old_row in list(self._row_map.keys()):
             if old_row not in discovered_rows:
@@ -191,7 +198,7 @@ class BSTSyncer:
                 self._row_map[row_idx] = (key, clean_sym)
                 self.market_store.register_instrument(key, clean_sym)
                 new_keys.append(key)
-                excel_updates.append((row_idx, cleaned_val))
+                excel_updates.append((row_idx, clean_sym))
 
         if excel_updates:
             logger.info(f"Writing {len(excel_updates)} new/updated scripts from Google Sheets into local Excel...")
