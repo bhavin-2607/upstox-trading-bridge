@@ -40,13 +40,19 @@ function doPost(e) {
     // ========================================================================
     if (payload.mode === "bst") {
       var startRow = payload.start_row || 3;
+      var aData = payload.a_data;     // Col A: [SCRIPT] clean normal symbols
       var cgData = payload.cg_data;   // Cols C to G: [LTP, OPEN, HIGH, LOW, P.CLOSE]
       var yzData = payload.yz_data;   // Cols Y to Z: [P HIGH, P. LOW]
       var volData = payload.vol_data; // Col AF: [vol]
 
       var updatedRows = 0;
 
-      // 1. In-place update price columns C to G (5 contiguous columns)
+      // 1. In-place update script names in Col A with clean normal symbols (no prefixes)
+      if (aData && aData.length > 0) {
+        sheet.getRange(startRow, 1, aData.length, 1).setValues(aData);
+      }
+
+      // 2. In-place update price columns C to G (5 contiguous columns)
       if (cgData && cgData.length > 0) {
         var numRows = cgData.length;
         sheet.getRange(startRow, 3, numRows, 5).setValues(cgData);
@@ -54,19 +60,19 @@ function doPost(e) {
         updatedRows = numRows;
       }
 
-      // 2. In-place update previous day high/low columns Y to Z (2 contiguous columns)
+      // 3. In-place update previous day high/low columns Y to Z (2 contiguous columns)
       if (yzData && yzData.length > 0) {
         sheet.getRange(startRow, 25, yzData.length, 2).setValues(yzData);
         sheet.getRange(startRow, 25, yzData.length, 2).setNumberFormat("#,##0.00");
       }
 
-      // 3. In-place update volume column AF (Col 32)
+      // 4. In-place update volume column AF (Col 32)
       if (volData && volData.length > 0) {
         sheet.getRange(startRow, 32, volData.length, 1).setValues(volData);
         sheet.getRange(startRow, 32, volData.length, 1).setNumberFormat("#,##0");
       }
 
-      // 4. Read current scripts from Column A to return back to Python (Bidirectional Sync)
+      // 5. Read current scripts from Column A to return back to Python (Bidirectional Sync)
       var lastRow = sheet.getLastRow();
       var currentScripts = [];
       if (lastRow >= startRow) {

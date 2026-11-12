@@ -60,6 +60,7 @@ class TestGoogleSheetWebhookSyncer(unittest.TestCase):
         self.assertEqual(payload["mode"], "bst")
         self.assertEqual(payload["sheet_name"], "BST")
         self.assertEqual(payload["start_row"], 3)
+        self.assertEqual(payload["a_data"][0][0], "NIFTY 50")
         self.assertEqual(len(payload["cg_data"]), 1)
         self.assertEqual(payload["cg_data"][0][0], 24150.0)  # LTP
 

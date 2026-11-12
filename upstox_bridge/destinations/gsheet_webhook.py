@@ -85,13 +85,15 @@ class GoogleSheetWebhookSyncer:
         min_row = min(row_map.keys())
         max_row = max(row_map.keys())
 
+        a_data: List[List[str]] = []
         cg_data: List[List[float]] = []
         yz_data: List[List[float]] = []
         vol_data: List[List[int]] = []
 
         for r in range(min_row, max_row + 1):
             if r in row_map:
-                key, _ = row_map[r]
+                key, clean_sym = row_map[r]
+                a_data.append([clean_sym])
                 item = self.market_store.get_quote_item(key)
                 if item:
                     ltp = round(item.ltp, 2) if item.ltp else 0.0
@@ -110,6 +112,7 @@ class GoogleSheetWebhookSyncer:
                     yz_data.append([0.0, 0.0])
                     vol_data.append([0])
             else:
+                a_data.append([""])
                 cg_data.append([0.0, 0.0, 0.0, 0.0, 0.0])
                 yz_data.append([0.0, 0.0])
                 vol_data.append([0])
@@ -118,6 +121,7 @@ class GoogleSheetWebhookSyncer:
             "mode": "bst",
             "sheet_name": self.sheet_name,
             "start_row": min_row,
+            "a_data": a_data,
             "cg_data": cg_data,
             "yz_data": yz_data,
             "vol_data": vol_data,
