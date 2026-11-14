@@ -1,15 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller build specification for Upstox Trading Bridge Desktop Software."""
+"""PyInstaller build specification for Upstox Trading Bridge Standalone Executable."""
 
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
 project_root = Path.cwd()
 
-# 1. Collect CustomTkinter theme and font assets
-ctk_datas = collect_data_files("customtkinter")
+# 1. Collect CustomTkinter assets if available
+ctk_datas = []
+try:
+    ctk_datas = collect_data_files("customtkinter")
+except Exception:
+    pass
 
 # 2. Project asset files to bundle
 datas = [
@@ -42,6 +46,7 @@ hiddenimports = [
     "protobuf",
     "dotenv",
     "psutil",
+    "upstox_bridge.gui.web_dashboard",
 ]
 
 if sys.platform == "win32":
@@ -77,31 +82,23 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# Single-file standalone executable (all DLLs, Python runtime, and libraries embedded)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     [],
-    exclude_binaries=True,
     name="UpstoxBridge",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    console=False,  # Launch as a clean windowed Desktop App without black terminal window
+    upx=False,  # Disabled UPX to prevent python3XX.dll load corruption on Windows
+    console=True,  # Shows terminal with immediate status logs and web dashboard links
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="UpstoxBridge",
 )

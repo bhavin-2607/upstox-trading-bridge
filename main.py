@@ -334,23 +334,27 @@ def main():
     subparsers.add_parser("create-template", help="Generate styled Excel template workbook")
 
     # GUI Dashboard
-    subparsers.add_parser("gui", help="Launch the Desktop GUI Dashboard")
+    subparsers.add_parser("gui", help="Launch the Desktop GUI / Web Dashboard")
+    subparsers.add_parser("web", help="Launch the Web Dashboard in browser")
+    subparsers.add_parser("dashboard", help="Launch the Web Dashboard in browser")
 
     args = parser.parse_args()
 
     if not args.command:
-        # Default action when launched without subcommands (e.g. double-click executable): Launch Desktop GUI
+        # Default action when launched without subcommands (e.g. double-click executable): Launch Desktop / Web GUI
         try:
             from upstox_bridge.gui.app import launch_gui
             launch_gui()
             return
         except Exception as e:
-            logger.warning(f"Could not launch Desktop GUI: {e}")
+            logger.warning(f"Could not launch GUI: {e}")
             parser.print_help()
             sys.exit(1)
 
     commands = {
         "gui": lambda _: __import__("upstox_bridge.gui.app", fromlist=["launch_gui"]).launch_gui(),
+        "web": lambda _: __import__("upstox_bridge.gui.web_dashboard", fromlist=["launch_web_dashboard"]).launch_web_dashboard(),
+        "dashboard": lambda _: __import__("upstox_bridge.gui.web_dashboard", fromlist=["launch_web_dashboard"]).launch_web_dashboard(),
         "run": cmd_run,
         "simulate": cmd_simulate,
         "login": cmd_login,

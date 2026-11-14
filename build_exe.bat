@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-title Upstox Bridge - Standalone Windows Executable Builder
+title Upstox Bridge - Standalone Windows Single-File Builder
 
 echo ==============================================================================
 echo          UPSTOX TRADING BRIDGE - STANDALONE BUILD SCRIPT
@@ -30,10 +30,10 @@ REM 2. Verify PyInstaller installation
 echo [*] Checking PyInstaller...
 !PYTHON_EXE! -m pip install pyinstaller customtkinter pystray Pillow --quiet
 
-REM 3. Compile Standalone Executable
+REM 3. Compile Standalone Single-File Executable
 echo.
-echo [*] Compiling Standalone Windows Desktop Software via PyInstaller...
-echo     (This may take 1-2 minutes to package all dependencies)
+echo [*] Compiling Standalone Windows Single-File Executable via PyInstaller...
+echo     (Embedding Python runtime, python3XX.dll, and all dependencies into one file)
 echo.
 
 !PYTHON_EXE! -m PyInstaller upstox_bridge.spec --clean --noconfirm
@@ -47,30 +47,37 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM 4. Copy auxiliary files into dist\UpstoxBridge
-echo.
-echo [*] Copying default configuration and template files to output folder...
-if not exist "dist\UpstoxBridge" mkdir "dist\UpstoxBridge"
-
-if exist ".env" (
-    copy /Y ".env" "dist\UpstoxBridge\.env" >nul
-) else if exist ".env.example" (
-    copy /Y ".env.example" "dist\UpstoxBridge\.env" >nul
+REM 4. Clean up intermediate build scratch folder so users never open it by mistake
+if exist "build" (
+    echo [*] Removing intermediate build cache folder...
+    rmdir /s /q "build"
 )
 
-if exist "bst.xlsx" copy /Y "bst.xlsx" "dist\UpstoxBridge\bst.xlsx" >nul
-if exist "trial.xlsx" copy /Y "trial.xlsx" "dist\UpstoxBridge\trial.xlsx" >nul
-if exist "watchlist.txt" copy /Y "watchlist.txt" "dist\UpstoxBridge\watchlist.txt" >nul
+REM 5. Copy auxiliary configuration files alongside dist\UpstoxBridge.exe
+echo.
+echo [*] Copying configuration and workbook files to dist folder...
+if not exist "dist" mkdir "dist"
+
+if exist ".env" (
+    copy /Y ".env" "dist\.env" >nul
+) else if exist ".env.example" (
+    copy /Y ".env.example" "dist\.env" >nul
+)
+
+if exist "bst.xlsx" copy /Y "bst.xlsx" "dist\bst.xlsx" >nul
+if exist "trial.xlsx" copy /Y "trial.xlsx" "dist\trial.xlsx" >nul
+if exist "watchlist.txt" copy /Y "watchlist.txt" "dist\watchlist.txt" >nul
 
 echo.
 echo ==============================================================================
-echo [SUCCESS] Standalone Desktop Application Built Successfully!
+echo [SUCCESS] Standalone Single-File Executable Built Successfully!
 echo ==============================================================================
 echo  Executable location:
-echo    dist\UpstoxBridge\UpstoxBridge.exe
+echo    dist\UpstoxBridge.exe
 echo.
-echo  You can copy or zip the entire 'dist\UpstoxBridge' folder to any Windows
-echo  PC and double-click 'UpstoxBridge.exe' to run without installing Python!
+echo  This is a 100%% self-contained single executable. All Python DLLs and
+echo  libraries are embedded inside. You can copy 'dist\UpstoxBridge.exe'
+echo  and 'dist\.env' to any Windows PC and double-click to run!
 echo ==============================================================================
 echo.
 pause
