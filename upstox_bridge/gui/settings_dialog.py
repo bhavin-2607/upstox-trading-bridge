@@ -31,6 +31,25 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         self.geometry("640x590")
         self.resizable(False, False)
 
+        # Apply Pure Dark Black OLED canvas styling
+        self.configure(fg_color="#000000")
+
+        # Set dialog icon
+        icon_ico = settings.root_dir / "assets" / "app_icon.ico"
+        icon_png = settings.root_dir / "assets" / "app_icon.png"
+        if sys.platform == "win32" and icon_ico.exists():
+            try:
+                self.iconbitmap(default=str(icon_ico))
+            except Exception:
+                pass
+        elif icon_png.exists():
+            try:
+                from PIL import ImageTk
+                self._icon_photo = ImageTk.PhotoImage(file=str(icon_png))
+                self.wm_iconphoto(True, self._icon_photo)
+            except Exception:
+                pass
+
         # Center on parent
         self.transient(parent)
         self.grab_set()
@@ -45,17 +64,19 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             self,
             text="Settings & API Credentials",
             font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#FFFFFF",
         )
         title_label.pack(padx=pad_x, pady=(20, 10), anchor="w")
 
         # 1. Upstox Access Token
-        token_frame = ctk.CTkFrame(self)
+        token_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
         token_frame.pack(fill="x", padx=pad_x, pady=8)
 
         token_lbl = ctk.CTkLabel(
             token_frame,
             text="Upstox Access Token (JWT):",
             font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#FFFFFF",
         )
         token_lbl.pack(anchor="w", padx=12, pady=(8, 2))
 
@@ -64,6 +85,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             placeholder_text="Paste your UPSTOX_ACCESS_TOKEN here...",
             show="*",
             height=34,
+            fg_color="#08080A",
+            border_color="#27272A",
+            text_color="#FFFFFF",
         )
         self.token_entry.pack(fill="x", padx=12, pady=(0, 6))
         current_token = settings.upstox_access_token
@@ -80,8 +104,11 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             width=90,
             height=26,
             command=self._toggle_show_token,
-            fg_color="#334155",
-            hover_color="#475569",
+            fg_color="#16171B",
+            hover_color="#23252E",
+            border_color="#27272A",
+            border_width=1,
+            text_color="#A1A1AA",
         )
         self.show_token_btn.pack(side="left", padx=(0, 8))
 
@@ -91,26 +118,30 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             width=140,
             height=26,
             command=self._paste_token,
-            fg_color="#0284c7",
-            hover_color="#0369a1",
+            fg_color="#08B6DE",
+            hover_color="#0693b3",
+            text_color="#FFFFFF",
         )
         paste_btn.pack(side="left")
 
         # 2. Excel Workbook File Path
-        excel_frame = ctk.CTkFrame(self)
+        excel_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
         excel_frame.pack(fill="x", padx=pad_x, pady=8)
 
         excel_lbl = ctk.CTkLabel(
             excel_frame,
             text="Target Excel Workbook & Sheet:",
             font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#FFFFFF",
         )
         excel_lbl.pack(anchor="w", padx=12, pady=(8, 4))
 
         excel_row = ctk.CTkFrame(excel_frame, fg_color="transparent")
         excel_row.pack(fill="x", padx=12, pady=(0, 4))
 
-        self.excel_path_entry = ctk.CTkEntry(excel_row, height=32)
+        self.excel_path_entry = ctk.CTkEntry(
+            excel_row, height=32, fg_color="#08080A", border_color="#27272A", text_color="#FFFFFF"
+        )
         self.excel_path_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.excel_path_entry.insert(0, str(settings.excel_file_path))
 
@@ -119,6 +150,11 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             text="Browse...",
             width=80,
             height=32,
+            fg_color="#16171B",
+            hover_color="#23252E",
+            border_color="#27272A",
+            border_width=1,
+            text_color="#A1A1AA",
             command=self._browse_excel,
         )
         browse_btn.pack(side="right")
@@ -126,21 +162,24 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         sheet_row = ctk.CTkFrame(excel_frame, fg_color="transparent")
         sheet_row.pack(fill="x", padx=12, pady=(0, 8))
 
-        sheet_lbl = ctk.CTkLabel(sheet_row, text="Target Sheet Name:")
+        sheet_lbl = ctk.CTkLabel(sheet_row, text="Target Sheet Name:", text_color="#A1A1AA")
         sheet_lbl.pack(side="left", padx=(0, 8))
 
-        self.sheet_entry = ctk.CTkEntry(sheet_row, width=120, height=28)
+        self.sheet_entry = ctk.CTkEntry(
+            sheet_row, width=120, height=28, fg_color="#08080A", border_color="#27272A", text_color="#FFFFFF"
+        )
         self.sheet_entry.pack(side="left")
         self.sheet_entry.insert(0, settings.excel_sheet_name)
 
         # 3. Google Sheets Webhook URL
-        gsheet_frame = ctk.CTkFrame(self)
+        gsheet_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
         gsheet_frame.pack(fill="x", padx=pad_x, pady=8)
 
         gsheet_lbl = ctk.CTkLabel(
             gsheet_frame,
             text="Google Sheets Webhook URL (Optional):",
             font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#FFFFFF",
         )
         gsheet_lbl.pack(anchor="w", padx=12, pady=(8, 4))
 
@@ -151,6 +190,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             gsheet_row,
             placeholder_text="https://script.google.com/macros/s/.../exec",
             height=32,
+            fg_color="#08080A",
+            border_color="#27272A",
+            text_color="#FFFFFF",
         )
         self.gsheet_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         current_gsheet = settings.gsheet_webhook_url
@@ -163,13 +205,16 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             width=90,
             height=32,
             command=self._test_gsheet,
-            fg_color="#475569",
-            hover_color="#64748b",
+            fg_color="#16171B",
+            hover_color="#23252E",
+            border_color="#27272A",
+            border_width=1,
+            text_color="#A1A1AA",
         )
         test_btn.pack(side="right")
 
         # 4. Debug Console Option (Windows)
-        debug_frame = ctk.CTkFrame(self)
+        debug_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
         debug_frame.pack(fill="x", padx=pad_x, pady=8)
 
         debug_row = ctk.CTkFrame(debug_frame, fg_color="transparent")
@@ -213,8 +258,11 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             text="Cancel",
             width=100,
             height=36,
-            fg_color="#334155",
-            hover_color="#475569",
+            fg_color="#16171B",
+            hover_color="#23252E",
+            border_color="#27272A",
+            border_width=1,
+            text_color="#A1A1AA",
             command=self.destroy,
         )
         cancel_btn.pack(side="left")
@@ -224,8 +272,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             text="Save Changes",
             width=140,
             height=36,
-            fg_color="#16a34a",
-            hover_color="#15803d",
+            fg_color="#08B6DE",
+            hover_color="#0693b3",
+            text_color="#FFFFFF",
             command=self._save_settings,
         )
         save_btn.pack(side="right")

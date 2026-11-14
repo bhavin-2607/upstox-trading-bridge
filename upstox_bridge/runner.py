@@ -125,6 +125,12 @@ class BridgeRunner:
         self.market_store.sync_watchlist(pairs)
         return resolved_keys
 
+    def quick_add_script(self, raw_symbol: str) -> Tuple[bool, str, int]:
+        """Add a script directly to the active BST syncer and live stream."""
+        if self.bst_syncer:
+            return self.bst_syncer.append_script(raw_symbol)
+        return False, "BST syncer is not active", 0
+
     def on_bst_scripts_detected(self, all_keys: List[str]) -> None:
         """Callback when BST syncer detects new or updated scripts in Column A."""
         try:

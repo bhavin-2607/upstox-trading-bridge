@@ -237,6 +237,59 @@ class BSTSyncer:
 
         return new_keys
 
+    def append_script(self, raw_symbol: str) -> Tuple[bool, str, int]:
+        """
+        Append a new script to the next empty row in Column A of the BST sheet.
+        Returns (success, message, row_number).
+        """
+        raw_symbol = str(raw_symbol).strip()
+        if not raw_symbol:
+            return False, "Symbol cannot be empty", 0
+
+        clean_sym = self.instrument_master.clean_script_symbol(raw_symbol)
+        key = self.instrument_master.resolve_symbol(raw_symbol)
+
+        # Check if already tracked
+        for r, (k, s) in self._row_map.items():
+            if k == key or s.upper() == clean_sym.upper():
+                return False, f"Symbol already tracked at row {r}", r
+
+        # Target row: max row + 1, starting from self.start_row (10)
+        target_row = max(self._row_map.keys(), default=self.start_row - 1) + 1
+
+        written = False
+        if self._use_xlwings and self._xw_sheet:
+            try:
+                self._xw_sheet.range(f"A{target_row}").value = clean_sym
+                written = True
+            except Exception as e:
+                logger.warning(f"xlwings append error: {e}")
+
+        if not written and self.file_path.exists():
+            try:
+                wb = openpyxl.load_workbook(self.file_path, data_only=False)
+                if self.sheet_name in wb.sheetnames:
+                    ws = wb[self.sheet_name]
+                    ws.cell(target_row, self.COL_SCRIPT, clean_sym)
+                    wb.save(self.file_path)
+                    written = True
+                wb.close()
+            except Exception as e:
+                logger.warning(f"openpyxl append error: {e}")
+
+        if written:
+            self._known_scripts_raw[target_row] = clean_sym
+            self._row_map[target_row] = (key, clean_sym)
+            self.market_store.register_instrument(key, clean_sym)
+            if self.on_scripts_detected:
+                try:
+                    all_keys = [k for k, _ in self._row_map.values()]
+                    self.on_scripts_detected(all_keys)
+                except Exception as e:
+                    logger.debug(f"Error dispatching dynamic script detection: {e}")
+            return True, f"Added {clean_sym} to row {target_row}", target_row
+        return False, "Could not write to Excel sheet", 0
+
     def _sync_cycle_xlwings(self) -> None:
         """High-speed batch slice update in active Excel via xlwings."""
         if not self._row_map or not self._xw_sheet:

@@ -12,6 +12,14 @@ from pathlib import Path
 # Add project root to path if running directly
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# Ensure Windows assigns a distinct Application User Model ID for the taskbar icon
+if sys.platform == "win32":
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("bhavinamesara.upstoxbridge.desktop.2_0")
+    except Exception:
+        pass
+
 from upstox_bridge.auth.oauth import UpstoxAuthManager
 from upstox_bridge.core.config import settings
 from upstox_bridge.core.market_store import MarketStore
