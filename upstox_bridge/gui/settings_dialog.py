@@ -13,7 +13,7 @@ except Exception:
     _TK_AVAILABLE = False
     ctk = None
 
-from upstox_bridge.core.config import settings, update_env_variable
+from upstox_bridge.core.config import get_asset_path, settings, update_env_variable
 from upstox_bridge.destinations.gsheet_webhook import GoogleSheetWebhookSyncer
 from upstox_bridge.gui.debug_console import is_debug_console_active, set_debug_console
 
@@ -35,9 +35,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         # Apply Pure Dark Black OLED canvas styling
         self.configure(fg_color="#000000")
 
-        # Set dialog icon
-        icon_ico = settings.root_dir / "assets" / "app_icon.ico"
-        icon_png = settings.root_dir / "assets" / "app_icon.png"
+        # Set dialog icon using resolved asset path
+        icon_ico = get_asset_path("app_icon.ico")
+        icon_png = get_asset_path("app_icon.png")
         if sys.platform == "win32" and icon_ico.exists():
             try:
                 self.iconbitmap(default=str(icon_ico))
@@ -56,6 +56,10 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         self.grab_set()
 
         self._build_ui()
+
+    def _windows_set_titlebar_icon(self):
+        """Override CustomTkinter's default so it never sets CustomTkinter_icon_Windows.ico."""
+        pass
 
     def _build_ui(self):
         pad_x = 20

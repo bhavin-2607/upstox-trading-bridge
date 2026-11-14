@@ -67,6 +67,7 @@ if exist ".env" (
 if exist "bst.xlsx" copy /Y "bst.xlsx" "dist\bst.xlsx" >nul
 if exist "trial.xlsx" copy /Y "trial.xlsx" "dist\trial.xlsx" >nul
 if exist "watchlist.txt" copy /Y "watchlist.txt" "dist\watchlist.txt" >nul
+if exist "assets" xcopy /E /I /Y "assets" "dist\assets" >nul
 
 echo.
 echo ==============================================================================

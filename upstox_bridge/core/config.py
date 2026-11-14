@@ -221,6 +221,30 @@ class Settings:
 settings = Settings()
 
 
+def get_asset_path(filename: str) -> Path:
+    """Resolve asset path searching PyInstaller bundle (_MEIPASS), dist folder, and project root."""
+    if hasattr(sys, "_MEIPASS"):
+        p = Path(sys._MEIPASS) / "assets" / filename
+        if p.exists():
+            return p
+
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        exe_p = exe_dir / "assets" / filename
+        if exe_p.exists():
+            return exe_p
+
+    p = settings.root_dir / "assets" / filename
+    if p.exists():
+        return p
+
+    p = Path(__file__).resolve().parent.parent.parent / "assets" / filename
+    if p.exists():
+        return p
+
+    return settings.root_dir / "assets" / filename
+
+
 def update_env_variable(key: str, value: str, env_path: Optional[Path] = None) -> None:
     """Update or append an environment variable in the .env file cleanly."""
     target_path = env_path or (settings.root_dir / ".env")

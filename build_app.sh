@@ -39,6 +39,9 @@ fi
 if [ -f "watchlist.txt" ]; then
     cp -f "watchlist.txt" "dist/watchlist.txt"
 fi
+if [ -d "assets" ]; then
+    cp -r "assets" "dist/"
+fi
 
 if [ -f "dist/UpstoxBridge" ]; then
     chmod +x dist/UpstoxBridge || true

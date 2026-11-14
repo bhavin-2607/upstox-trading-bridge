@@ -17,12 +17,13 @@ from typing import Dict, List, Optional, Tuple
 try:
     from tkinter import filedialog, messagebox
     import customtkinter as ctk
+    from PIL import Image, ImageTk
     _TK_AVAILABLE = True
 except Exception:
     _TK_AVAILABLE = False
     ctk = None
 
-from upstox_bridge.core.config import settings
+from upstox_bridge.core.config import get_asset_path, settings
 from upstox_bridge.core.logger import get_gui_logs, setup_production_logging
 from upstox_bridge.gui.settings_dialog import SettingsDialog
 from upstox_bridge.gui.tray import SystemTrayController
@@ -63,48 +64,48 @@ def get_market_sessions() -> Tuple[str, str, str, str, str]:
     ist_time_str = now.strftime("%H:%M:%S IST")
 
     if weekday >= 5:
-        return "⚪ Closed (Weekend)", ist_time_str, "#A1A1AA", "#141416", "#27272A"
+        return "CLOSED (WEEKEND)", ist_time_str, "#A1A1AA", "#141416", "#27272A"
 
     now_minutes = now.hour * 60 + now.minute
     if 555 <= now_minutes <= 930:  # 09:15 to 15:30
-        return "🟢 NSE & MCX Live", ist_time_str, "#00E676", "#042314", "#0d5e35"
+        return "NSE & MCX LIVE", ist_time_str, "#00E676", "#042314", "#0d5e35"
     elif 540 <= now_minutes < 555:  # 09:00 to 09:15
-        return "🟡 NSE Pre-Open", ist_time_str, "#F5A623", "#261a06", "#66440c"
+        return "NSE PRE-OPEN", ist_time_str, "#F5A623", "#261a06", "#66440c"
     elif 930 < now_minutes <= 1410:  # 15:30 to 23:30 (MCX Commodity evening session)
-        return "🟢 MCX Live (Commodity)", ist_time_str, "#08B6DE", "#051b24", "#0d4e68"
+        return "MCX COMMODITY LIVE", ist_time_str, "#08B6DE", "#051b24", "#0d4e68"
     else:
-        return "⚪ Market Closed", ist_time_str, "#A1A1AA", "#141416", "#27272A"
+        return "MARKET CLOSED", ist_time_str, "#A1A1AA", "#141416", "#27272A"
 
 
 def get_token_health(token: str) -> Tuple[str, str, str, str]:
     """Decode JWT expiration from token and return health pill status."""
     if not token or "." not in token:
-        return "⚠ No Token Configured", "#EF4444", "#290a0d", "#63161e"
+        return "No Token Configured", "#EF4444", "#290a0d", "#63161e"
     try:
         parts = token.split(".")
         if len(parts) < 2:
-            return "⚠ Invalid Token Format", "#EF4444", "#290a0d", "#63161e"
+            return "Invalid Token Format", "#EF4444", "#290a0d", "#63161e"
         payload_b64 = parts[1]
         payload_b64 += "=" * (-len(payload_b64) % 4)
         payload_json = base64.urlsafe_b64decode(payload_b64).decode("utf-8")
         data = json.loads(payload_json)
         exp = data.get("exp")
         if not exp:
-            return "✓ Upstox Token Active", "#08B6DE", "#051b24", "#0d4e68"
+            return "Token Active", "#08B6DE", "#051b24", "#0d4e68"
 
         remaining_sec = exp - time.time()
         if remaining_sec <= 0:
-            return "🔴 Token Expired", "#FF334B", "#290a0d", "#63161e"
+            return "Token Expired", "#FF334B", "#290a0d", "#63161e"
         elif remaining_sec < 2 * 3600:
             h = int(remaining_sec // 3600)
             m = int((remaining_sec % 3600) // 60)
-            return f"🟡 Token: {h}h {m}m (Expiring)", "#F5A623", "#261a06", "#66440c"
+            return f"Token: {h}h {m}m (Expiring)", "#F5A623", "#261a06", "#66440c"
         else:
             h = int(remaining_sec // 3600)
             m = int((remaining_sec % 3600) // 60)
-            return f"🟢 Token: {h}h {m}m", "#00E676", "#042314", "#0d5e35"
+            return f"Token: {h}h {m}m Active", "#00E676", "#042314", "#0d5e35"
     except Exception:
-        return "✓ Token Active", "#08B6DE", "#051b24", "#0d4e68"
+        return "Token Active", "#08B6DE", "#051b24", "#0d4e68"
 
 
 class UpstoxBridgeApp(ctk.CTk if ctk else object):
@@ -119,7 +120,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         setup_production_logging()
 
         # Window Configuration & Dimensions
-        self.title("Upstox Trading Bridge — Institutional Edition")
+        self.title("BSA Trading Bridge — Institutional Edition")
         self.geometry("960x780")
         self.minsize(900, 680)
 
@@ -162,10 +163,14 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         # Start periodic GUI telemetry loop
         self._telemetry_loop()
 
+    def _windows_set_titlebar_icon(self):
+        """Override CustomTkinter's default so it never overwrites with CustomTkinter_icon_Windows.ico."""
+        self._apply_application_icons()
+
     def _apply_application_icons(self):
         """Configure native OS taskbar, Alt-Tab, and window title bar icons."""
-        icon_ico = settings.root_dir / "assets" / "app_icon.ico"
-        icon_png = settings.root_dir / "assets" / "app_icon.png"
+        icon_ico = get_asset_path("app_icon.ico")
+        icon_png = get_asset_path("app_icon.png")
 
         if sys.platform == "win32" and icon_ico.exists():
             try:
@@ -176,7 +181,6 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                 except Exception:
                     pass
             try:
-                from PIL import ImageTk
                 if icon_png.exists():
                     self._app_icon_photo = ImageTk.PhotoImage(file=str(icon_png))
                     self.wm_iconphoto(True, self._app_icon_photo)
@@ -196,7 +200,6 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                 pass
         elif icon_png.exists():
             try:
-                from PIL import ImageTk
                 self._app_icon_photo = ImageTk.PhotoImage(file=str(icon_png))
                 self.wm_iconphoto(True, self._app_icon_photo)
             except Exception:
@@ -210,16 +213,37 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
         header_frame.pack(fill="x", padx=20, pady=(14, 6))
 
-        # Title & Institutional Wordmark
+        # Title & Institutional Wordmark with brand icon
         title_col = ctk.CTkFrame(header_frame, fg_color="transparent")
         title_col.pack(side="left")
 
-        app_title = ctk.CTkLabel(
-            title_col,
-            text="⚡ UPSTOX TRADING BRIDGE",
-            font=ctk.CTkFont(size=20, weight="bold"),
-            text_color=COLOR_TEXT_PRIMARY,
-        )
+        logo_path = get_asset_path("app_icon.png")
+        if logo_path.exists():
+            try:
+                logo_pil = Image.open(logo_path)
+                self._header_logo = ctk.CTkImage(light_image=logo_pil, dark_image=logo_pil, size=(24, 24))
+                app_title = ctk.CTkLabel(
+                    title_col,
+                    text="  BSA TRADING BRIDGE",
+                    image=self._header_logo,
+                    compound="left",
+                    font=ctk.CTkFont(size=20, weight="bold"),
+                    text_color=COLOR_TEXT_PRIMARY,
+                )
+            except Exception:
+                app_title = ctk.CTkLabel(
+                    title_col,
+                    text="BSA TRADING BRIDGE",
+                    font=ctk.CTkFont(size=20, weight="bold"),
+                    text_color=COLOR_TEXT_PRIMARY,
+                )
+        else:
+            app_title = ctk.CTkLabel(
+                title_col,
+                text="BSA TRADING BRIDGE",
+                font=ctk.CTkFont(size=20, weight="bold"),
+                text_color=COLOR_TEXT_PRIMARY,
+            )
         app_title.pack(anchor="w")
 
         app_sub = ctk.CTkLabel(
@@ -253,8 +277,8 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         self.pill_clock.pack(side="left", padx=4)
         self.lbl_clock = ctk.CTkLabel(
             self.pill_clock,
-            text=f"🕒 {clock_txt}",
-            font=ctk.CTkFont(family="Consolas" if sys.platform == "win32" else "Menlo", size=11),
+            text=clock_txt,
+            font=ctk.CTkFont(family="Consolas" if sys.platform == "win32" else "Menlo", size=11, weight="bold"),
             text_color=COLOR_TEXT_PRIMARY,
         )
         self.lbl_clock.pack(padx=10, pady=3)
@@ -286,14 +310,6 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
 
         bar_inner = ctk.CTkFrame(omni_box, fg_color="transparent")
         bar_inner.pack(fill="x", padx=12, pady=8)
-
-        search_icon = ctk.CTkLabel(
-            bar_inner,
-            text="🔍",
-            font=ctk.CTkFont(size=14),
-            text_color=COLOR_BRAND_CYAN,
-        )
-        search_icon.pack(side="left", padx=(0, 8))
 
         self.omni_entry = ctk.CTkEntry(
             bar_inner,
@@ -327,7 +343,6 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             font=ctk.CTkFont(size=11),
             text_color=COLOR_STATUS_BULL,
         )
-        # Pack only when feedback is active
 
     def _on_quick_add_script(self):
         """Resolve and inject user script into BST Excel and live stream."""
@@ -382,11 +397,11 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                 self.btn_add_script.configure(state="normal")
                 if success:
                     self.omni_entry.delete(0, "end")
-                    self.lbl_omni_feedback.configure(text=f"✓ {msg}", text_color=COLOR_STATUS_BULL)
+                    self.lbl_omni_feedback.configure(text=f"SUCCESS: {msg}", text_color=COLOR_STATUS_BULL)
                     self.lbl_omni_feedback.pack(padx=14, pady=(0, 6), anchor="w")
                     self.after(5000, lambda: self.lbl_omni_feedback.pack_forget())
                 else:
-                    self.lbl_omni_feedback.configure(text=f"⚠ {msg}", text_color=COLOR_STATUS_BEAR)
+                    self.lbl_omni_feedback.configure(text=f"ERROR: {msg}", text_color=COLOR_STATUS_BEAR)
                     self.lbl_omni_feedback.pack(padx=14, pady=(0, 6), anchor="w")
                     self.after(5000, lambda: self.lbl_omni_feedback.pack_forget())
 
@@ -493,7 +508,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         self.card_feed = self._create_card(
             cards_grid,
             col=0,
-            title="📡 UPSTOX FEED",
+            title="UPSTOX FEED",
             status_text="STOPPED",
             detail_1="0 ticks processed",
             detail_2="242 instruments tracked",
@@ -507,7 +522,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         self.card_excel = self._create_card(
             cards_grid,
             col=1,
-            title="📊 EXCEL (BST)",
+            title="EXCEL (BST)",
             status_text="READY",
             detail_1=f"File: {excel_name}",
             detail_2=f"Sheet: {sheet_name}",
@@ -520,7 +535,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         self.card_gsheet = self._create_card(
             cards_grid,
             col=2,
-            title="🌐 GOOGLE SHEETS",
+            title="GOOGLE SHEETS",
             status_text="CONFIGURED" if gsheet_active else "DISABLED",
             detail_1="Interval: 3.0s",
             detail_2="BST In-Place Mode",
@@ -532,7 +547,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         self.card_server = self._create_card(
             cards_grid,
             col=3,
-            title="⚡ THROUGHPUT",
+            title="THROUGHPUT",
             status_text="STANDBY",
             detail_1="Rate: 0 ticks/sec",
             detail_2=f"Local Port: {settings.local_server_port}",
@@ -606,7 +621,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         # Left action buttons
         self.btn_live = ctk.CTkButton(
             control_frame,
-            text="▶ Start Live Feed",
+            text="Start Live Feed",
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color="#059669",
             hover_color="#10b981",
@@ -619,7 +634,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
 
         self.btn_sim = ctk.CTkButton(
             control_frame,
-            text="⚡ Run Simulation",
+            text="Run Simulation",
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color=COLOR_BRAND_CYAN,
             hover_color="#0693b3",
@@ -632,7 +647,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
 
         self.btn_stop = ctk.CTkButton(
             control_frame,
-            text="■ Stop Bridge",
+            text="Stop Bridge",
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color="#e11d48",
             hover_color="#f43f5e",
@@ -647,7 +662,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         # Right utility buttons
         self.btn_settings = ctk.CTkButton(
             control_frame,
-            text="⚙ Settings & Token",
+            text="Settings & Token",
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#16171B",
             hover_color="#23252E",
@@ -662,7 +677,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
 
         self.btn_open_excel = ctk.CTkButton(
             control_frame,
-            text="📂 Open in Excel",
+            text="Open in Excel",
             font=ctk.CTkFont(size=12),
             fg_color="#16171B",
             hover_color="#23252E",
@@ -932,14 +947,14 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             ses_txt, clock_txt, ses_col, ses_bg, ses_border = get_market_sessions()
             self.pill_session.configure(fg_color=ses_bg, border_color=ses_border)
             self.lbl_session.configure(text=ses_txt, text_color=ses_col)
-            self.lbl_clock.configure(text=f"🕒 {clock_txt}")
+            self.lbl_clock.configure(text=clock_txt)
 
             # 2. Update Feed & Telemetry Cards
             if self.runner and self.runner.is_running:
                 if self.runner.is_simulation:
-                    self.card_feed["status"].configure(text="● SIMULATION", text_color=COLOR_BRAND_AMBER)
+                    self.card_feed["status"].configure(text="SIMULATING", text_color=COLOR_BRAND_AMBER)
                 else:
-                    self.card_feed["status"].configure(text="● LIVE FEED", text_color=COLOR_STATUS_BULL)
+                    self.card_feed["status"].configure(text="LIVE STREAMING", text_color=COLOR_STATUS_BULL)
 
                 ticks = self.runner.ticks_received
                 tracked_count = self.runner.market_store.count()
@@ -974,9 +989,9 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                         ui_card["ltp"].configure(text=f"₹{ltp:,.2f}")
 
                         if delta >= 0:
-                            ui_card["delta"].configure(text=f"▲ +{delta:.2f} (+{pct:.2f}%)", text_color=COLOR_STATUS_BULL)
+                            ui_card["delta"].configure(text=f"+{delta:.2f} (+{pct:.2f}%)", text_color=COLOR_STATUS_BULL)
                         else:
-                            ui_card["delta"].configure(text=f"▼ {delta:.2f} ({pct:.2f}%)", text_color=COLOR_STATUS_BEAR)
+                            ui_card["delta"].configure(text=f"{delta:.2f} ({pct:.2f}%)", text_color=COLOR_STATUS_BEAR)
 
                         h_val = f"{item.high:,.2f}" if item.high else (f"{item.prev_high:,.2f}" if item.prev_high else "-")
                         l_val = f"{item.low:,.2f}" if item.low else (f"{item.prev_low:,.2f}" if item.prev_low else "-")

@@ -85,7 +85,7 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-icon_file = project_root / "assets" / "app_icon.ico"
+icon_file = (project_root / "assets" / "app_icon.ico").resolve()
 
 # Single-file standalone executable (all DLLs, Python runtime, and libraries embedded)
 exe = EXE(
