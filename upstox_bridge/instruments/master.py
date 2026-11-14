@@ -191,28 +191,78 @@ class InstrumentMaster:
         return f"NSE_EQ|{clean}"
 
     def _smart_fuzzy_resolve(self, query: str) -> Optional[str]:
-        """Fuzzy/token-based matching for commodities, futures, and options."""
+        """Fuzzy/token-based matching for commodities, futures, and options with smart expiry ranking."""
         import re
-        query_tokens = set(re.findall(r"\w+", query.upper()))
-        if not query_tokens:
+        import time
+
+        raw_tokens = [t for t in re.findall(r"\w+", query.upper())]
+        if not raw_tokens:
             return None
 
-        best_key = None
-        best_score = -1
+        want_next_week = any(t in ("NEXT", "NEXTWEEK") for t in raw_tokens)
+        clean_tokens = set([t for t in raw_tokens if t not in ("NEXT", "WEEK", "CURRENT", "THIS")])
+        if not clean_tokens:
+            return None
 
-        is_commodity = any(c in query_tokens for c in [
+        is_commodity = any(c in clean_tokens for c in [
             "GOLD", "SILVER", "CRUDEOIL", "CRUDE", "NATURALGAS", "COPPER", "ZINC", "ALUMINIUM", "LEAD"
         ])
+        is_option = any(t in clean_tokens for t in ("CE", "PE", "CALL", "PUT"))
+        is_future = any(t in clean_tokens for t in ("FUT", "FUTURE", "FUTURES"))
+
+        # Explicit underlying index matching to avoid NIFTY matching FINNIFTY or BANKNIFTY
+        underlying = None
+        for idx in ("BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTY"):
+            if idx in clean_tokens:
+                underlying = idx
+                break
+
+        now_ms = time.time() * 1000
+        candidates = []
 
         for sym_upper, item in self._by_symbol.items():
             item_tokens = set(re.findall(r"\w+", sym_upper))
-            if query_tokens.issubset(item_tokens):
-                score = 100 - len(item_tokens)
-                if is_commodity and item.get("exchange") == "MCX":
-                    score += 50
-                if score > best_score:
-                    best_score = score
-                    best_key = item.get("instrument_key")
+            if clean_tokens.issubset(item_tokens):
+                if underlying:
+                    if underlying == "NIFTY" and any(x in item_tokens for x in ("BANKNIFTY", "FINNIFTY", "MIDCPNIFTY")):
+                        continue
+                    if underlying != "NIFTY" and underlying not in item_tokens:
+                        continue
+
+                candidates.append((sym_upper, item))
+
+        if not candidates:
+            return None
+
+        # For Options and Futures: Rank by expiry date (current week = earliest, next week = second)
+        if is_option or is_future:
+            with_exp = []
+            for sym, item in candidates:
+                exp = item.get("expiry")
+                if exp and isinstance(exp, (int, float)):
+                    with_exp.append((sym, item, float(exp)))
+
+            if with_exp:
+                # Sort in ascending order of expiry timestamp
+                with_exp.sort(key=lambda x: x[2])
+                # Filter active contracts (within 24 hours of today or later)
+                active = [x for x in with_exp if x[2] >= (now_ms - 86400000)] or with_exp
+
+                if want_next_week and len(active) > 1:
+                    return active[1][1].get("instrument_key")
+                return active[0][1].get("instrument_key")
+
+        # Standard token score matching fallback
+        best_key = None
+        best_score = -1
+        for sym_upper, item in candidates:
+            item_tokens = set(re.findall(r"\w+", sym_upper))
+            score = 100 - len(item_tokens)
+            if is_commodity and item.get("exchange") == "MCX":
+                score += 50
+            if score > best_score:
+                best_score = score
+                best_key = item.get("instrument_key")
 
         return best_key
 

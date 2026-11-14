@@ -259,12 +259,14 @@ class BSTSyncer:
                 key, _ = self._row_map[r]
                 item = self.market_store.get_quote_item(key)
                 if item:
-                    ltp = round(item.ltp, 2) if item.ltp else 0.0
-                    open_p = round(item.open, 2) if item.open else 0.0
-                    high_p = round(item.high, 2) if item.high else 0.0
-                    low_p = round(item.low, 2) if item.low else 0.0
-                    close_p = round(item.close, 2) if item.close else 0.0
-                    vol = int(item.volume)
+                    # Live tick if available; fallback to close/prev_close so newly added symbols display immediately
+                    effective_ltp = item.ltp if (item.ltp and item.ltp > 0) else (item.close or item.prev_close or 0.0)
+                    ltp = round(effective_ltp, 2) if effective_ltp else 0.0
+                    open_p = round(item.open, 2) if (item.open and item.open > 0) else ltp
+                    high_p = round(item.high, 2) if (item.high and item.high > 0) else (round(item.prev_high, 2) if item.prev_high else ltp)
+                    low_p = round(item.low, 2) if (item.low and item.low > 0) else (round(item.prev_low, 2) if item.prev_low else ltp)
+                    close_p = round(item.close, 2) if (item.close and item.close > 0) else (round(item.prev_close, 2) if item.prev_close else ltp)
+                    vol = int(item.volume) if item.volume else 0
 
                     block_cg.append([ltp, open_p, high_p, low_p, close_p])
                     block_af.append([vol])
@@ -334,16 +336,23 @@ class BSTSyncer:
                 if not item:
                     continue
 
-                if item.ltp:
-                    ws.cell(r, self.COL_LTP, round(item.ltp, 2))
+                effective_ltp = item.ltp if (item.ltp and item.ltp > 0) else (item.close or item.prev_close)
+                if effective_ltp:
+                    ws.cell(r, self.COL_LTP, round(effective_ltp, 2))
                 if item.open:
                     ws.cell(r, self.COL_OPEN, round(item.open, 2))
+                elif effective_ltp:
+                    ws.cell(r, self.COL_OPEN, round(effective_ltp, 2))
                 if item.high:
                     ws.cell(r, self.COL_HIGH, round(item.high, 2))
+                elif item.prev_high:
+                    ws.cell(r, self.COL_HIGH, round(item.prev_high, 2))
                 if item.low:
                     ws.cell(r, self.COL_LOW, round(item.low, 2))
-                if item.close:
-                    ws.cell(r, self.COL_PCLOSE, round(item.close, 2))
+                elif item.prev_low:
+                    ws.cell(r, self.COL_LOW, round(item.prev_low, 2))
+                if item.close or item.prev_close:
+                    ws.cell(r, self.COL_PCLOSE, round(item.close or item.prev_close, 2))
                 if item.prev_high is not None and item.prev_high > 0:
                     ws.cell(r, self.COL_PHIGH, round(item.prev_high, 2))
                 if item.prev_low is not None and item.prev_low > 0:

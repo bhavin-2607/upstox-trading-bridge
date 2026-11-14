@@ -127,24 +127,27 @@ class BridgeRunner:
 
     def on_bst_scripts_detected(self, all_keys: List[str]) -> None:
         """Callback when BST syncer detects new or updated scripts in Column A."""
-        logger.info(f"BST sheet script change detected! Tracking {len(all_keys)} instruments.")
+        try:
+            logger.info(f"BST sheet script change detected! Tracking {len(all_keys)} instruments.")
 
-        # Fetch previous day stats for any newly added keys
-        stats = self.historical_fetcher.fetch_all(all_keys)
-        for key, (ph, pl, pc) in stats.items():
-            self.market_store.update_prev_day_stats(key, prev_high=ph, prev_low=pl, prev_close=pc)
+            # Fetch previous day stats for any newly added keys
+            stats = self.historical_fetcher.fetch_all(all_keys)
+            for key, (ph, pl, pc) in stats.items():
+                self.market_store.update_prev_day_stats(key, prev_high=ph, prev_low=pl, prev_close=pc)
 
-        if self.bst_syncer:
-            self.bst_syncer._last_yz_matrix = None
-        if self.gsheet_syncer:
-            self.gsheet_syncer._last_sent_yz = None
+            if self.bst_syncer:
+                self.bst_syncer._last_yz_matrix = None
+            if self.gsheet_syncer:
+                self.gsheet_syncer._last_sent_yz = None
 
-        if self.streamer and self.streamer.is_connected:
-            current_keys = set(self.streamer.subscribed_keys)
-            to_add = [k for k in all_keys if k not in current_keys]
-            if to_add:
-                self.streamer.subscribe(to_add)
-                logger.info(f"Dynamically subscribed to {len(to_add)} newly added keys from BST sheet.")
+            if self.streamer and self.streamer.is_connected:
+                current_keys = set(self.streamer.subscribed_keys)
+                to_add = [k for k in all_keys if k not in current_keys]
+                if to_add:
+                    self.streamer.subscribe(to_add)
+                    logger.info(f"Dynamically subscribed to {len(to_add)} newly added keys from BST sheet.")
+        except Exception as e:
+            logger.warning(f"Error handling detected BST scripts: {e}")
 
     def on_gsheet_scripts_received(self, gsheet_scripts: List[tuple[int, str]]) -> None:
         """Callback when Google Sheet webhook returns current scripts from Column A (Bidirectional Sync)."""

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import List
@@ -13,6 +14,31 @@ from upstox_bridge.core.config import settings
 # In-memory buffer for GUI log viewer (stores last 300 log lines)
 LOG_BUFFER_MAX = 300
 _log_buffer: collections.deque[str] = collections.deque(maxlen=LOG_BUFFER_MAX)
+
+
+class SafeStreamHandler(logging.StreamHandler):
+    """Console stream handler that safely writes to stdout/stderr/CONOUT$ without crashing if stream is None."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            stream = self.stream
+            if stream is None or not hasattr(stream, "write"):
+                stream = sys.stderr or sys.stdout
+            if stream is None or not hasattr(stream, "write"):
+                return
+            msg = self.format(record)
+            stream.write(msg + self.terminator)
+            self.flush()
+        except Exception:
+            pass
+
+    def flush(self) -> None:
+        try:
+            stream = self.stream or sys.stderr or sys.stdout
+            if stream and hasattr(stream, "flush"):
+                stream.flush()
+        except Exception:
+            pass
 
 
 class GuiLogBufferHandler(logging.Handler):
@@ -45,10 +71,10 @@ def setup_production_logging(log_level: int = logging.INFO) -> None:
         datefmt="%H:%M:%S",
     )
 
-    # 1. Console Handler (stdout)
-    has_stream = any(isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler) for h in root_logger.handlers)
+    # 1. Safe Console Handler (stdout/stderr)
+    has_stream = any(isinstance(h, SafeStreamHandler) for h in root_logger.handlers)
     if not has_stream:
-        console_handler = logging.StreamHandler()
+        console_handler = SafeStreamHandler()
         console_handler.setFormatter(formatter)
         console_handler.setLevel(log_level)
         root_logger.addHandler(console_handler)
