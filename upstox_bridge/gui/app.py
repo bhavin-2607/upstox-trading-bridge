@@ -381,6 +381,14 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             else:
                 # 2. Append offline to workbook directly
                 try:
+                    import sys
+                    if sys.platform == "win32":
+                        try:
+                            import pythoncom
+                            pythoncom.CoInitialize()
+                        except Exception:
+                            pass
+
                     import openpyxl
                     from upstox_bridge.instruments.master import InstrumentMaster
                     im = InstrumentMaster()
@@ -389,24 +397,60 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                     key = im.resolve_symbol(raw_val)
 
                     wb_path = settings.excel_file_path
-                    if wb_path.exists():
-                        wb = openpyxl.load_workbook(wb_path, data_only=False)
-                        ws = wb[settings.excel_sheet_name] if settings.excel_sheet_name in wb.sheetnames else wb.active
-                        # Find next empty row >= 10
-                        last_r = 9
-                        for r in range(10, 1000):
-                            v = ws.cell(r, 1).value
-                            if v is not None and str(v).strip():
-                                last_r = r
-                        target_row = last_r + 1
-                        ws.cell(target_row, 1, clean_sym)
-                        wb.save(wb_path)
-                        wb.close()
-                        success = True
-                        msg = f"Added {clean_sym} to row {target_row} in {wb_path.name}"
-                    else:
+                    if not wb_path.exists():
                         success = False
                         msg = f"Workbook not found: {wb_path}"
+                    else:
+                        written = False
+                        # Try xlwings first if Excel is currently running
+                        try:
+                            import xlwings as xw
+                            target_book = None
+                            try:
+                                target_book = xw.Book(wb_path.name)
+                            except Exception:
+                                try:
+                                    target_book = xw.Book(str(wb_path))
+                                except Exception:
+                                    pass
+
+                            if target_book:
+                                ws = target_book.sheets[settings.excel_sheet_name] if settings.excel_sheet_name in [s.name for s in target_book.sheets] else target_book.sheets.active
+                                vals = ws.range("A10:A1000").value or []
+                                last_r = 9
+                                for idx, v in enumerate(vals, start=10):
+                                    if v is not None and str(v).strip():
+                                        last_r = idx
+                                target_row = last_r + 1
+                                ws.range(f"A{target_row}").value = clean_sym
+                                written = True
+                                success = True
+                                msg = f"Added {clean_sym} to row {target_row} in active Excel"
+                        except Exception:
+                            pass
+
+                        # If Excel was not running, fall back to openpyxl
+                        if not written:
+                            try:
+                                wb = openpyxl.load_workbook(wb_path, data_only=False)
+                                ws = wb[settings.excel_sheet_name] if settings.excel_sheet_name in wb.sheetnames else wb.active
+                                last_r = 9
+                                for r in range(10, 1000):
+                                    v = ws.cell(r, 1).value
+                                    if v is not None and str(v).strip():
+                                        last_r = r
+                                target_row = last_r + 1
+                                ws.cell(target_row, 1, clean_sym)
+                                wb.save(wb_path)
+                                wb.close()
+                                success = True
+                                msg = f"Added {clean_sym} to row {target_row} in {wb_path.name}"
+                            except PermissionError:
+                                success = False
+                                msg = f"File locked: '{wb_path.name}' is open in Excel. Start Live Feed or close the file."
+                            except Exception as e:
+                                success = False
+                                msg = f"Failed to save workbook: {e}"
                 except Exception as e:
                     success = False
                     msg = f"Failed to add script: {e}"

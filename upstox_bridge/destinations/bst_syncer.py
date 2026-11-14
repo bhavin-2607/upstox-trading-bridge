@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 import time
 from pathlib import Path
@@ -69,6 +70,7 @@ class BSTSyncer:
         self.status: str = self.STATE_DISCONNECTED
         self.last_sync_time: float = 0.0
         self.last_error: str = ""
+        self._pending_appends: queue.Queue = queue.Queue()
 
         self._use_xlwings = False
         self._xw_book = None
@@ -257,13 +259,43 @@ class BSTSyncer:
         # Target row: max row + 1, starting from self.start_row (10)
         target_row = max(self._row_map.keys(), default=self.start_row - 1) + 1
 
-        written = False
-        if self._use_xlwings and self._xw_sheet:
+        # If background sync loop is actively running, route append to the syncer's COM apartment thread
+        if self._running and self._thread and self._thread.is_alive():
+            evt = threading.Event()
+            box = [False, "", 0]
+            self._pending_appends.put((raw_symbol, clean_sym, key, target_row, evt, box))
+            if evt.wait(timeout=3.5):
+                return tuple(box)
+            # If timed out, fall through to direct attempt
+
+        # If syncer thread is not running or timed out, attempt on calling thread with COM initialized:
+        import sys
+        if sys.platform == "win32":
             try:
-                self._xw_sheet.range(f"A{target_row}").value = clean_sym
-                written = True
+                import pythoncom
+                pythoncom.CoInitialize()
+            except Exception:
+                pass
+
+        written = False
+        if self._use_xlwings:
+            try:
+                import xlwings as xw
+                target_book = None
+                try:
+                    target_book = xw.Book(self.file_path.name)
+                except Exception:
+                    try:
+                        target_book = xw.Book(str(self.file_path))
+                    except Exception:
+                        pass
+
+                if target_book:
+                    sheet = target_book.sheets[self.sheet_name] if self.sheet_name in [s.name for s in target_book.sheets] else target_book.sheets.active
+                    sheet.range(f"A{target_row}").value = clean_sym
+                    written = True
             except Exception as e:
-                logger.warning(f"xlwings append error: {e}")
+                logger.debug(f"Direct xlwings append error: {e}")
 
         if not written and self.file_path.exists():
             try:
@@ -274,6 +306,9 @@ class BSTSyncer:
                     wb.save(self.file_path)
                     written = True
                 wb.close()
+            except PermissionError:
+                logger.warning(f"openpyxl append error: workbook '{self.file_path.name}' is open in Excel and file is locked.")
+                return False, f"Workbook '{self.file_path.name}' is open in Excel. Start Live Feed to write via live Excel.", 0
             except Exception as e:
                 logger.warning(f"openpyxl append error: {e}")
 
@@ -288,7 +323,55 @@ class BSTSyncer:
                 except Exception as e:
                     logger.debug(f"Error dispatching dynamic script detection: {e}")
             return True, f"Added {clean_sym} to row {target_row}", target_row
-        return False, "Could not write to Excel sheet", 0
+        return False, "Could not write to Excel sheet. If the file is open, click 'Start Live Feed' first.", 0
+
+    def _process_pending_appends(self) -> None:
+        """Process queued script additions on BSTSyncer's dedicated COM thread."""
+        while not self._pending_appends.empty():
+            try:
+                raw_symbol, clean_sym, key, target_row, evt, box = self._pending_appends.get_nowait()
+            except Exception:
+                break
+
+            written = False
+            if self._use_xlwings and self._xw_sheet:
+                try:
+                    self._xw_sheet.range(f"A{target_row}").value = clean_sym
+                    written = True
+                except Exception as e:
+                    logger.warning(f"xlwings append error on COM thread: {e}")
+
+            if not written and self.file_path.exists():
+                try:
+                    wb = openpyxl.load_workbook(self.file_path, data_only=False)
+                    if self.sheet_name in wb.sheetnames:
+                        ws = wb[self.sheet_name]
+                        ws.cell(target_row, self.COL_SCRIPT, clean_sym)
+                        wb.save(self.file_path)
+                        written = True
+                    wb.close()
+                except Exception as e:
+                    logger.warning(f"openpyxl append error on COM thread: {e}")
+
+            if written:
+                self._known_scripts_raw[target_row] = clean_sym
+                self._row_map[target_row] = (key, clean_sym)
+                self.market_store.register_instrument(key, clean_sym)
+                if self.on_scripts_detected:
+                    try:
+                        all_keys = [k for k, _ in self._row_map.values()]
+                        self.on_scripts_detected(all_keys)
+                    except Exception as e:
+                        logger.debug(f"Error dispatching dynamic script detection: {e}")
+                box[0] = True
+                box[1] = f"Added {clean_sym} to row {target_row}"
+                box[2] = target_row
+            else:
+                box[0] = False
+                box[1] = "Could not write to Excel sheet"
+                box[2] = 0
+
+            evt.set()
 
     def _sync_cycle_xlwings(self) -> None:
         """High-speed batch slice update in active Excel via xlwings."""
@@ -424,6 +507,9 @@ class BSTSyncer:
 
     def sync_once(self) -> None:
         """Execute a single sync iteration."""
+        # Process queued dynamic appends on BSTSyncer's dedicated COM thread
+        self._process_pending_appends()
+
         # Periodically scan Column A for changes in scripts
         now = time.time()
         if now - self._last_scan_time > 2.5:

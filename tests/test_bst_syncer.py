@@ -159,8 +159,28 @@ class TestBSTSyncer(unittest.TestCase):
         formula_h = ws.cell(231, 8).value
         self.assertTrue(str(formula_b).lower().startswith("=if"), f"Formula B corrupted: {formula_b}")
         self.assertEqual(formula_h, "=($Y231-$Z231)*11.8%")
-
         wb.close()
+
+    def test_append_script_and_pending_queue(self):
+        """Test append_script adds script and processes pending queues cleanly."""
+        syncer = BSTSyncer(
+            market_store=self.store,
+            file_path=self.test_excel,
+            sheet_name="BST",
+        )
+        syncer.scan_scripts()
+        start_count = len(syncer._row_map)
+
+        # Append a new script
+        success, msg, target_row = syncer.append_script("TATAMOTORS")
+        self.assertTrue(success, f"Failed to append script: {msg}")
+        self.assertEqual(len(syncer._row_map), start_count + 1)
+        self.assertIn("Added", msg)
+
+        # Verify duplicate prevention
+        dup_success, dup_msg, _ = syncer.append_script("TATAMOTORS")
+        self.assertFalse(dup_success)
+        self.assertIn("already tracked", dup_msg)
 
 
 if __name__ == "__main__":
