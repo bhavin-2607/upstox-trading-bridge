@@ -65,7 +65,7 @@ def cmd_simulate(args):
     custom_file = Path(args.file) if getattr(args, "file", None) else settings.excel_file_path
     custom_sheet = getattr(args, "sheet", None) or settings.excel_sheet_name
 
-    is_bst = custom_sheet.upper() == "BST" or custom_file.name.lower() == "trial.xlsx"
+    is_bst = custom_sheet.upper() == "BST" or custom_file.name.lower() in ("trial.xlsx", "bst.xlsx")
 
     base_prices = {}
     default_base = {

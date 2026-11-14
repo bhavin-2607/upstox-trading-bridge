@@ -55,7 +55,7 @@ class BridgeRunner:
         """Detect if target sheet is a BST / trading template (with SCRIPT column) vs standard table."""
         if self.sheet_name.upper() == "BST":
             return True
-        if self.excel_file.name.lower() == "trial.xlsx":
+        if self.excel_file.name.lower() in ("trial.xlsx", "bst.xlsx"):
             return True
 
         if self.excel_file.exists():
