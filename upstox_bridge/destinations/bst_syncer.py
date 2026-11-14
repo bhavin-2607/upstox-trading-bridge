@@ -285,7 +285,11 @@ class BSTSyncer:
                 self._stats_written = True
 
         except Exception as e:
-            logger.debug(f"xlwings sync cycle error: {e}")
+            err_msg = str(e)
+            if "0x80010001" in err_msg or "rejected by callee" in err_msg:
+                logger.debug("Excel is in cell-edit mode; will update on next tick.")
+            else:
+                logger.warning(f"xlwings sync cycle error: {e}")
 
     def _sync_cycle_openpyxl(self) -> None:
         """Atomic openpyxl fallback updating only data cells."""
@@ -353,12 +357,32 @@ class BSTSyncer:
         logger.info(f"BST Syncer started (refresh: {self.refresh_sec}s, tracked: {len(self._row_map)} rows).")
 
     def _run_loop(self) -> None:
-        while self._running:
+        import sys
+        if sys.platform == "win32":
             try:
-                self.sync_once()
+                import pythoncom
+                pythoncom.CoInitialize()
             except Exception as e:
-                logger.debug(f"Error in BST sync loop: {e}")
-            time.sleep(self.refresh_sec)
+                logger.debug(f"pythoncom.CoInitialize error: {e}")
+
+        # On Windows, re-acquire COM handle in this thread so calls belong to this apartment
+        if self._use_xlwings and sys.platform == "win32":
+            self._connect_xlwings()
+
+        try:
+            while self._running:
+                try:
+                    self.sync_once()
+                except Exception as e:
+                    logger.warning(f"Error in BST sync loop: {e}")
+                time.sleep(self.refresh_sec)
+        finally:
+            if sys.platform == "win32":
+                try:
+                    import pythoncom
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
 
     def stop(self) -> None:
         """Stop background sync loop."""

@@ -44,6 +44,8 @@ class UpstoxFeedStreamer:
         )
 
         self._is_connected = False
+        self.ticks_count = 0
+        self.last_tick_time = 0.0
         self._bind_events()
 
     def _bind_events(self) -> None:
@@ -56,17 +58,23 @@ class UpstoxFeedStreamer:
     def _on_open(self, *args, **kwargs) -> None:
         self._is_connected = True
         logger.info(f"WebSocket connected to Upstox. Subscribed to {len(self.subscribed_keys)} instruments.")
+        print(f"[OK] Connected to Upstox WebSocket feed ({len(self.subscribed_keys)} instruments subscribed).")
 
     def _on_close(self, *args, **kwargs) -> None:
         self._is_connected = False
         logger.warning(f"WebSocket connection closed. Args: {args}")
+        print(f"[WARNING] Upstox WebSocket closed: {args}")
 
     def _on_error(self, *args, **kwargs) -> None:
         logger.error(f"WebSocket error: {args}")
+        print(f"[ERROR] Upstox WebSocket error: {args}")
 
     def _on_message(self, message_dict: dict) -> None:
         """Process incoming decoded tick dictionary."""
         try:
+            import time
+            self.ticks_count = getattr(self, "ticks_count", 0) + 1
+            self.last_tick_time = time.time()
             feeds = message_dict.get("feeds", {})
             if not isinstance(feeds, dict):
                 return

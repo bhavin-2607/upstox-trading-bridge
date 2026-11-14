@@ -286,9 +286,25 @@ class BridgeRunner:
         print("Press Ctrl+C to stop.\n")
 
         # Keep main thread alive
+        loop_seconds = 0
+        market_notice_shown = False
         try:
             while self._running:
                 time.sleep(1.0)
+                loop_seconds += 1
+
+                # Feed health monitor
+                if self.streamer:
+                    ticks = self.streamer.ticks_count
+                    if loop_seconds == 15 and ticks == 0 and not market_notice_shown:
+                        print("[Notice] 0 live market ticks received so far.")
+                        print("         If markets are currently closed (weekends, holidays, or outside 09:15-15:30 IST),")
+                        print("         Upstox live feed does not broadcast new price ticks.")
+                        print("         Run 'python main.py simulate --file trial.xlsx --sheet BST' to test live streaming anytime!\n")
+                        market_notice_shown = True
+                    elif loop_seconds % 30 == 0 and ticks > 0:
+                        logger.info(f"Live feed active: {ticks} market ticks processed.")
+
                 if not self.is_bst_mode and settings.watchlist_txt_path.exists():
                     current_mtime = settings.watchlist_txt_path.stat().st_mtime
                     if self._last_txt_mtime and current_mtime != self._last_txt_mtime:

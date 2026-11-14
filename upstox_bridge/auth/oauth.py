@@ -30,17 +30,37 @@ class UpstoxAuthManager:
         self.redirect_uri = settings.upstox_redirect_uri
         self.cache_file = settings.token_cache_path
 
+    def validate_token(self, token: str) -> bool:
+        """Validate if the access token is currently accepted by Upstox API."""
+        try:
+            resp = requests.get(
+                "https://api.upstox.com/v2/user/profile",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                return True
+            else:
+                logger.warning(f"Upstox token is invalid or expired (HTTP {resp.status_code}): {resp.text[:120]}")
+                return False
+        except Exception as e:
+            logger.debug(f"Could not reach Upstox profile endpoint to validate token: {e}")
+            # Do not block if network check fails
+            return True
+
     def get_valid_token(self) -> Optional[str]:
         """
         Return a valid access token.
         Priority:
-        1. UPSTOX_ACCESS_TOKEN from .env (if present and not expired placeholder)
+        1. UPSTOX_ACCESS_TOKEN from .env (if present and valid today)
         2. Cached token in .token_cache.json (if still valid today)
         """
         # Check explicit environment token
         env_token = settings.upstox_access_token
         if env_token and len(env_token) > 20:
-            return env_token
+            if self.validate_token(env_token):
+                return env_token
+            logger.warning("Configured UPSTOX_ACCESS_TOKEN in .env is expired/invalid.")
 
         # Check local cache
         cached = self._read_cache()
@@ -48,7 +68,8 @@ class UpstoxAuthManager:
             token = cached.get("access_token")
             expires_at = cached.get("expires_at", 0)
             if token and time.time() < (expires_at - 300):  # 5 min safety buffer
-                return token
+                if self.validate_token(token):
+                    return token
 
         return None
 

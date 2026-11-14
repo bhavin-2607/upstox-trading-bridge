@@ -192,21 +192,39 @@ class ExcelSyncer:
 
     def _run_loop(self) -> None:
         """Background synchronization loop."""
-        counter = 0
-        while self._running:
+        if sys.platform == "win32":
             try:
-                self.sync_once()
+                import pythoncom
+                pythoncom.CoInitialize()
+            except Exception:
+                pass
 
-                # Every ~10 iterations, check for watchlist updates in Excel
-                counter += 1
-                if counter % 10 == 0 and settings.sync_watchlist_from_excel:
-                    new_symbols = self.check_excel_watchlist()
-                    if new_symbols and new_symbols != self._last_watchlist:
-                        self._last_watchlist = list(new_symbols)
-                        if self.on_watchlist_change:
-                            self.on_watchlist_change(new_symbols)
+        if self._use_xlwings and sys.platform == "win32":
+            self._connect_xlwings()
 
-            except Exception as e:
-                logger.debug(f"Excel sync loop error: {e}")
+        counter = 0
+        try:
+            while self._running:
+                try:
+                    self.sync_once()
 
-            time.sleep(self.refresh_sec)
+                    # Every ~10 iterations, check for watchlist updates in Excel
+                    counter += 1
+                    if counter % 10 == 0 and settings.sync_watchlist_from_excel:
+                        new_symbols = self.check_excel_watchlist()
+                        if new_symbols and new_symbols != self._last_watchlist:
+                            self._last_watchlist = list(new_symbols)
+                            if self.on_watchlist_change:
+                                self.on_watchlist_change(new_symbols)
+
+                except Exception as e:
+                    logger.debug(f"Excel sync loop error: {e}")
+
+                time.sleep(self.refresh_sec)
+        finally:
+            if sys.platform == "win32":
+                try:
+                    import pythoncom
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
