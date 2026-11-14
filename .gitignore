@@ -2,6 +2,8 @@
 .env
 .env.local
 .token_cache.json
+logs/
+*.log
 
 # Python virtual environment & bytecode
 .venv/

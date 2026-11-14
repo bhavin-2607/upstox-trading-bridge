@@ -7,3 +7,7 @@ xlwings>=0.30.0
 protobuf>=5.26.0
 python-dotenv>=1.0.1
 psutil>=5.9.0
+customtkinter>=5.2.0
+pystray>=0.19.5
+Pillow>=10.0.0
+pyinstaller>=6.0.0

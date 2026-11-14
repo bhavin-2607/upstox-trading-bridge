@@ -35,6 +35,11 @@ class BSTSyncer:
     COL_PLOW = 26    # Col Z
     COL_VOL = 32     # Col AF
 
+    STATE_DISCONNECTED = "Disconnected"
+    STATE_CONNECTED = "Connected"
+    STATE_WAITING = "Waiting for Excel"
+    STATE_EDIT_MODE = "Excel in Edit Mode"
+
     def __init__(
         self,
         market_store: MarketStore,
@@ -45,7 +50,7 @@ class BSTSyncer:
         on_scripts_detected: Optional[Callable[[List[str]], None]] = None,
     ):
         self.market_store = market_store
-        self.file_path = (file_path or Path("trial.xlsx")).resolve()
+        self.file_path = (file_path or Path("bst.xlsx")).resolve()
         self.sheet_name = sheet_name
         self.refresh_sec = refresh_sec
         self.start_row = start_row
@@ -59,6 +64,11 @@ class BSTSyncer:
         self._last_scan_time = 0.0
         self._stats_written = False
         self._last_yz_matrix: Optional[List[List[Optional[float]]]] = None
+        self._last_reconnect_attempt = 0.0
+
+        self.status: str = self.STATE_DISCONNECTED
+        self.last_sync_time: float = 0.0
+        self.last_error: str = ""
 
         self._use_xlwings = False
         self._xw_book = None
@@ -284,12 +294,29 @@ class BSTSyncer:
                 self._last_yz_matrix = [row[:] for row in block_yz]
                 self._stats_written = True
 
+            self.status = self.STATE_CONNECTED
+            self.last_sync_time = time.time()
+            self.last_error = ""
+
         except Exception as e:
             err_msg = str(e)
             if "0x80010001" in err_msg or "rejected by callee" in err_msg:
-                logger.debug("Excel is in cell-edit mode; will update on next tick.")
+                self.status = self.STATE_EDIT_MODE
+                logger.debug("Excel is currently in cell-edit mode; buffered update will apply on next tick.")
             else:
-                logger.warning(f"xlwings sync cycle error: {e}")
+                self.last_error = err_msg
+                # If Excel was closed/disconnected, mark waiting and trigger watchdog re-connect
+                if any(x in err_msg.lower() for x in ("disconnected", "cannot find", "rpc server", "failed to connect", "com_error", "object has no attribute")):
+                    self.status = self.STATE_WAITING
+                    now = time.time()
+                    if now - self._last_reconnect_attempt > 2.0:
+                        self._last_reconnect_attempt = now
+                        logger.info("Excel disconnected or closed. Watchdog waiting to re-attach...")
+                        if self._connect_xlwings():
+                            self.status = self.STATE_CONNECTED
+                            logger.info("Watchdog successfully re-attached to Excel workbook!")
+                else:
+                    logger.warning(f"xlwings sync cycle error: {e}")
 
     def _sync_cycle_openpyxl(self) -> None:
         """Atomic openpyxl fallback updating only data cells."""
@@ -326,7 +353,11 @@ class BSTSyncer:
 
             wb.save(self.file_path)
             wb.close()
+            self.status = self.STATE_CONNECTED
+            self.last_sync_time = time.time()
+            self.last_error = ""
         except Exception as e:
+            self.last_error = str(e)
             logger.debug(f"openpyxl sync error: {e}")
 
     def sync_once(self) -> None:

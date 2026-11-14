@@ -16,6 +16,11 @@ logger = logging.getLogger("FeedStreamer")
 class UpstoxFeedStreamer:
     """Manages connection to Upstox WebSocket market feed."""
 
+    STATE_DISCONNECTED = "Disconnected"
+    STATE_CONNECTING = "Connecting"
+    STATE_CONNECTED = "Connected"
+    STATE_ERROR = "Error"
+
     def __init__(
         self,
         access_token: str,
@@ -23,12 +28,14 @@ class UpstoxFeedStreamer:
         instrument_keys: Optional[List[str]] = None,
         mode: str = "full",
         on_tick_callback: Optional[Callable[[str], None]] = None,
+        on_state_change: Optional[Callable[[str], None]] = None,
     ):
         self.access_token = access_token
         self.market_store = market_store
         self.subscribed_keys = set(instrument_keys or [])
         self.mode = mode.lower() if mode.lower() in ("full", "ltpc") else "full"
         self.on_tick_callback = on_tick_callback
+        self.on_state_change = on_state_change
 
         # Configure Upstox API Client
         config = upstox_client.Configuration()
@@ -44,9 +51,21 @@ class UpstoxFeedStreamer:
         )
 
         self._is_connected = False
+        self.connection_state = self.STATE_DISCONNECTED
         self.ticks_count = 0
         self.last_tick_time = 0.0
+        self._window_start = 0.0
+        self._window_ticks = 0
+        self._current_tps = 0.0
         self._bind_events()
+
+    def _set_state(self, new_state: str) -> None:
+        self.connection_state = new_state
+        if self.on_state_change:
+            try:
+                self.on_state_change(new_state)
+            except Exception:
+                pass
 
     def _bind_events(self) -> None:
         """Attach event handlers to Upstox streamer."""
@@ -57,15 +76,18 @@ class UpstoxFeedStreamer:
 
     def _on_open(self, *args, **kwargs) -> None:
         self._is_connected = True
+        self._set_state(self.STATE_CONNECTED)
         logger.info(f"WebSocket connected to Upstox. Subscribed to {len(self.subscribed_keys)} instruments.")
         print(f"[OK] Connected to Upstox WebSocket feed ({len(self.subscribed_keys)} instruments subscribed).")
 
     def _on_close(self, *args, **kwargs) -> None:
         self._is_connected = False
+        self._set_state(self.STATE_DISCONNECTED)
         logger.warning(f"WebSocket connection closed. Args: {args}")
         print(f"[WARNING] Upstox WebSocket closed: {args}")
 
     def _on_error(self, *args, **kwargs) -> None:
+        self._set_state(self.STATE_ERROR)
         logger.error(f"WebSocket error: {args}")
         print(f"[ERROR] Upstox WebSocket error: {args}")
 
@@ -138,12 +160,14 @@ class UpstoxFeedStreamer:
     def connect(self) -> None:
         """Connect WebSocket to Upstox."""
         logger.info("Connecting to Upstox live feed...")
+        self._set_state(self.STATE_CONNECTING)
         self.streamer.connect()
 
     def disconnect(self) -> None:
         """Disconnect WebSocket."""
         if self._is_connected:
             self.streamer.disconnect()
+        self._set_state(self.STATE_DISCONNECTED)
 
     def subscribe(self, instrument_keys: List[str]) -> None:
         """Dynamically subscribe to new instrument keys."""

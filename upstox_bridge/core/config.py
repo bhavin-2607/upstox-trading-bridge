@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 import yaml
 from dotenv import load_dotenv
 
-# Detect Project Root (two levels above upstox_bridge/core)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+# Detect Project Root (Application directory when frozen by PyInstaller, or source root)
+if getattr(sys, "frozen", False):
+    PROJECT_ROOT = Path(sys.executable).resolve().parent
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings:
@@ -23,8 +27,11 @@ class Settings:
         self.token_cache_path = self.root_dir / ".token_cache.json"
 
         # Ensure essential directories exist
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.templates_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            self.templates_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
 
         # Load environment variables
         env_path = self.root_dir / ".env"
@@ -38,15 +45,26 @@ class Settings:
         self.watchlist = self._load_yaml(self.config_dir / "watchlist.yaml")
 
     def _load_yaml(self, path: Path) -> Dict[str, Any]:
-        if not path.exists():
-            return {}
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                return data if isinstance(data, dict) else {}
-        except Exception as e:
-            print(f"[Warning] Failed to load {path}: {e}")
-            return {}
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+                    return data if isinstance(data, dict) else {}
+            except Exception:
+                pass
+
+        # Check PyInstaller bundled location if running as compiled binary
+        if getattr(sys, "frozen", False):
+            bundled = Path(getattr(sys, "_MEIPASS", self.root_dir)) / "config" / path.name
+            if bundled.exists():
+                try:
+                    with open(bundled, "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                        return data if isinstance(data, dict) else {}
+                except Exception:
+                    pass
+
+        return {}
 
     # Upstox settings
     @property
@@ -201,3 +219,28 @@ class Settings:
 
 # Global default settings instance
 settings = Settings()
+
+
+def update_env_variable(key: str, value: str, env_path: Optional[Path] = None) -> None:
+    """Update or append an environment variable in the .env file cleanly."""
+    target_path = env_path or (settings.root_dir / ".env")
+    env_lines = []
+    found = False
+
+    if target_path.exists():
+        with open(target_path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped.startswith(f"{key}=") or stripped.startswith(f"export {key}="):
+                    env_lines.append(f'{key}="{value}"\n')
+                    found = True
+                else:
+                    env_lines.append(line)
+
+    if not found:
+        if env_lines and not env_lines[-1].endswith("\n"):
+            env_lines.append("\n")
+        env_lines.append(f'{key}="{value}"\n')
+
+    with open(target_path, "w", encoding="utf-8") as f:
+        f.writelines(env_lines)

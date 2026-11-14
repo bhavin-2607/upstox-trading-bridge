@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import random
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -49,7 +51,37 @@ class BridgeRunner:
         self.local_server: Optional[LocalFeedServer] = None
 
         self._running = False
+        self._is_simulation = False
+        self._sim_thread: Optional[threading.Thread] = None
         self._last_txt_mtime: float = 0.0
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    @property
+    def is_simulation(self) -> bool:
+        return self._is_simulation
+
+    @property
+    def ticks_received(self) -> int:
+        if self.streamer:
+            return getattr(self.streamer, "ticks_count", 0)
+        return 0
+
+    @property
+    def excel_status(self) -> str:
+        if self.bst_syncer:
+            return getattr(self.bst_syncer, "status", "Active")
+        if self.excel_syncer:
+            return "Active" if getattr(self.excel_syncer, "_running", False) else "Stopped"
+        return "Disabled"
+
+    @property
+    def gsheet_status(self) -> str:
+        if self.gsheet_syncer and self.gsheet_syncer._running:
+            return f"Active ({self.gsheet_syncer.refresh_sec}s)"
+        return "Disabled"
 
     def _detect_bst_mode(self) -> bool:
         """Detect if target sheet is a BST / trading template (with SCRIPT column) vs standard table."""
@@ -177,18 +209,14 @@ class BridgeRunner:
             self.streamer.subscribe(new_keys)
             logger.info(f"Dynamically subscribed to {len(new_keys)} symbols from Excel.")
 
-    def start(self, interactive_login_if_needed: bool = True) -> None:
-        """Start the live market data bridge."""
+    def start_services(self, interactive_login_if_needed: bool = True) -> List[str]:
+        """Initialize all destinations, resolve instruments, authenticate, and start streaming."""
         self._running = True
-
-        print("=" * 65)
-        print(" UPSTOX LIVE MARKET DATA BRIDGE (Excel & Google Sheets) ")
-        print("=" * 65)
+        self._is_simulation = False
 
         # 1. Determine Instruments
         if self.is_bst_mode:
-            print(f"[*] Mode: BST Custom Trading Sheet ({self.excel_file.name} -> '{self.sheet_name}')")
-            print("[*] Reading instruments directly from SCRIPT column (Col A)...")
+            logger.info(f"Mode: BST Custom Trading Sheet ({self.excel_file.name} -> '{self.sheet_name}')")
             self.bst_syncer = BSTSyncer(
                 market_store=self.market_store,
                 file_path=self.excel_file,
@@ -196,29 +224,25 @@ class BridgeRunner:
                 refresh_sec=settings.excel_refresh_sec,
                 on_scripts_detected=self.on_bst_scripts_detected,
             )
-            # Scan initial scripts from sheet
             self.bst_syncer.scan_scripts()
             keys = [k for k, _ in self.bst_syncer.tracked_instruments]
-            print(f"[OK] Found {len(keys)} instruments in SCRIPT column.")
+            logger.info(f"Found {len(keys)} instruments in SCRIPT column.")
 
             # Fetch previous day High/Low/Close for all instruments
-            print("[*] Fetching previous day High/Low/Close stats...")
             stats = self.historical_fetcher.fetch_all(keys)
             for key, (ph, pl, pc) in stats.items():
                 self.market_store.update_prev_day_stats(key, prev_high=ph, prev_low=pl, prev_close=pc)
-            print(f"[OK] Loaded previous day stats for {len(stats)} instruments.")
             if self.bst_syncer:
                 self.bst_syncer._last_yz_matrix = None
             if self.gsheet_syncer:
                 self.gsheet_syncer._last_sent_yz = None
         else:
-            print("[*] Mode: Standard Live Watchlist Table")
+            logger.info("Mode: Standard Live Watchlist Table")
             keys = self.initialize_instruments()
 
         # 2. Authenticate
         token = self.auth_manager.get_valid_token()
         if not token:
-            # Try headless TOTP if configured
             token = attempt_totp_login()
 
         if not token and interactive_login_if_needed:
@@ -226,8 +250,9 @@ class BridgeRunner:
             token = self.auth_manager.interactive_login()
 
         if not token:
+            self._running = False
             raise RuntimeError(
-                "Unable to obtain valid Upstox access token. Please run 'python main.py login' or check your .env"
+                "Unable to obtain valid Upstox access token. Please set UPSTOX_ACCESS_TOKEN in .env or Settings."
             )
 
         # 3. Start Local Live Feed Server
@@ -258,8 +283,6 @@ class BridgeRunner:
                 on_gsheet_scripts_detected=self.on_gsheet_scripts_received,
             )
             self.gsheet_syncer.start()
-        elif settings.gsheet_enabled and not settings.gsheet_webhook_url:
-            logger.info("Google Sheets push skipped (no webhook URL provided).")
 
         # 6. Start WebSocket Streamer
         self.streamer = UpstoxFeedStreamer(
@@ -269,12 +292,154 @@ class BridgeRunner:
             mode=settings.upstox_mode,
         )
         self.streamer.connect()
+        return keys
+
+    def start_simulation_services(self) -> List[str]:
+        """Start all destinations in simulated tick mode for testing without active market session."""
+        self._running = True
+        self._is_simulation = True
+
+        default_base = {
+            "NIFTY 50": 25300.0,
+            "NIFTY BANK": 61500.0,
+            "RELIANCE": 1335.0,
+            "TCS": 2470.0,
+            "HDFCBANK": 805.0,
+            "INFY": 1150.0,
+            "TATAMOTORS": 298.0,
+            "ICICIBANK": 1570.0,
+            "SBIN": 1060.0,
+            "BHARTIARTL": 2100.0,
+            "GOLD DEC FUT": 138200.0,
+            "SILVER DEC FUT": 181700.0,
+            "CRUDEOIL NOV FUT": 8080.0,
+            "GOLD NOV 120000 PE": 110.0,
+        }
+        base_prices = {}
+
+        if self.is_bst_mode:
+            self.bst_syncer = BSTSyncer(
+                market_store=self.market_store,
+                file_path=self.excel_file,
+                sheet_name=self.sheet_name,
+                refresh_sec=settings.excel_refresh_sec,
+            )
+            self.bst_syncer.scan_scripts()
+            symbols = [sym for _, sym in self.bst_syncer.tracked_instruments]
+            keys = [k for k, _ in self.bst_syncer.tracked_instruments]
+
+            for sym in symbols:
+                key = self.instrument_master.resolve_symbol(sym)
+                p = default_base.get(sym.upper(), round(random.uniform(150, 4500), 2))
+                base_prices[sym] = p
+                ph = round(p * 1.015, 2)
+                pl = round(p * 0.985, 2)
+                pc = round(p * 0.998, 2)
+                self.market_store.update_prev_day_stats(key, prev_high=ph, prev_low=pl, prev_close=pc)
+                self.market_store.update_quote(
+                    instrument_key=key,
+                    ltp=p,
+                    open_price=round(p * 0.999, 2),
+                    high_price=round(p * 1.006, 2),
+                    low_price=round(p * 0.994, 2),
+                    close_price=pc,
+                    prev_high=ph,
+                    prev_low=pl,
+                    vwap=round(p * 0.999, 2),
+                    volume=random.randint(50000, 2500000),
+                )
+            if settings.excel_enabled:
+                self.bst_syncer.start()
+        else:
+            symbols = settings.watchlist_symbols or ["NIFTY 50", "NIFTY BANK", "RELIANCE"]
+            keys = []
+            for sym in symbols:
+                key = self.instrument_master.resolve_symbol(sym)
+                self.market_store.register_instrument(instrument_key=key, symbol=sym)
+                base_prices[sym] = default_base.get(sym, round(random.uniform(500, 3500), 2))
+                keys.append(key)
+
+            for sym, price in base_prices.items():
+                key = self.instrument_master.resolve_symbol(sym)
+                self.market_store.update_quote(
+                    instrument_key=key,
+                    ltp=price,
+                    open_price=round(price * 0.998, 2),
+                    high_price=round(price * 1.005, 2),
+                    low_price=round(price * 0.995, 2),
+                    close_price=round(price * 0.997, 2),
+                    vwap=round(price * 0.999, 2),
+                    volume=150000,
+                )
+            if settings.excel_enabled:
+                self.excel_syncer = ExcelSyncer(
+                    market_store=self.market_store,
+                    file_path=self.excel_file,
+                    sheet_name=self.sheet_name,
+                )
+                self.excel_syncer.start()
+
+        if settings.local_server_enabled:
+            self.local_server = LocalFeedServer(self.market_store)
+            self.local_server.start()
+
+        if settings.gsheet_enabled and settings.gsheet_webhook_url:
+            gsheet_mode = "bst" if self.is_bst_mode else "standard"
+            self.gsheet_syncer = GoogleSheetWebhookSyncer(
+                market_store=self.market_store,
+                mode=gsheet_mode,
+                bst_syncer=self.bst_syncer,
+            )
+            self.gsheet_syncer.start()
+
+        # Start background simulation tick generator thread
+        self._sim_thread = threading.Thread(
+            target=self._run_sim_loop, args=(symbols, base_prices), daemon=True, name="SimLoopThread"
+        )
+        self._sim_thread.start()
+        return keys
+
+    def _run_sim_loop(self, symbols: List[str], base_prices: dict) -> None:
+        """Background simulated tick stream."""
+        while self._running and self._is_simulation:
+            # Pick a random subset of symbols to tick
+            batch = random.sample(symbols, min(len(symbols), random.randint(3, 12)))
+            for sym in batch:
+                key = self.instrument_master.resolve_symbol(sym)
+                current = self.market_store.get_quote_item(key)
+                cur_ltp = current.ltp if current and current.ltp else base_prices.get(sym, 1000.0)
+
+                # Realistic fractional price fluctuation
+                delta_pct = random.uniform(-0.002, 0.002)
+                new_ltp = round(max(0.05, cur_ltp * (1.0 + delta_pct)), 2)
+
+                high_p = max(current.high or new_ltp, new_ltp) if current else new_ltp
+                low_p = min(current.low or new_ltp, new_ltp) if current else new_ltp
+                new_vol = (current.volume or 1000) + random.randint(10, 500) if current else 1000
+
+                self.market_store.update_quote(
+                    instrument_key=key,
+                    ltp=new_ltp,
+                    high_price=high_p,
+                    low_price=low_p,
+                    volume=new_vol,
+                )
+
+            time.sleep(0.3)
+
+    def start(self, interactive_login_if_needed: bool = True) -> None:
+        """Start the live market data bridge and enter blocking loop (CLI mode)."""
+        print("=" * 65)
+        print(" UPSTOX LIVE MARKET DATA BRIDGE (Excel & Google Sheets) ")
+        print("=" * 65)
+
+        keys = self.start_services(interactive_login_if_needed=interactive_login_if_needed)
+        print(f"[OK] Live bridge started for {len(keys)} instruments.")
 
         # Setup OS signal handlers
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
 
-        # Record initial mtime of watchlist.txt (for standard mode)
         if not self.is_bst_mode and settings.watchlist_txt_path.exists():
             self._last_txt_mtime = settings.watchlist_txt_path.stat().st_mtime
 
@@ -325,7 +490,8 @@ class BridgeRunner:
         if not self._running:
             return
         self._running = False
-        print("\nShutting down Upstox Live Bridge...")
+        self._is_simulation = False
+        logger.info("Stopping Upstox Live Bridge...")
 
         if self.streamer:
             self.streamer.disconnect()
@@ -337,5 +503,7 @@ class BridgeRunner:
             self.gsheet_syncer.stop()
         if self.local_server:
             self.local_server.stop()
+        if self._sim_thread and self._sim_thread.is_alive():
+            self._sim_thread.join(timeout=1.0)
 
-        print("Shutdown complete.")
+        logger.info("All bridge services stopped.")
