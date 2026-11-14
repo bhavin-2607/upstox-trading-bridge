@@ -17,17 +17,14 @@ from upstox_bridge.core.config import settings
 from upstox_bridge.core.market_store import MarketStore
 from upstox_bridge.destinations.excel_syncer import ExcelSyncer
 from upstox_bridge.destinations.gsheet_webhook import GoogleSheetWebhookSyncer
+from upstox_bridge.core.logger import setup_production_logging
 from upstox_bridge.destinations.local_feed_server import LocalFeedServer
 from upstox_bridge.instruments.master import InstrumentMaster
 from upstox_bridge.runner import BridgeRunner
 from templates.create_template import generate_styled_template
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
+# Setup production-grade safe logging (prevents NoneType.write on Windows windowed builds)
+setup_production_logging()
 logger = logging.getLogger("MainCLI")
 
 

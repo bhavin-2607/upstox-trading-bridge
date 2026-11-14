@@ -23,6 +23,9 @@ datas = [
     ("watchlist.txt", "."),
 ]
 
+if (project_root / "assets").exists():
+    datas.append(("assets", "assets"))
+
 # Include default workbooks if present
 for wb_name in ("bst.xlsx", "trial.xlsx"):
     wb_file = project_root / wb_name
@@ -82,6 +85,8 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+icon_file = project_root / "assets" / "app_icon.ico"
+
 # Single-file standalone executable (all DLLs, Python runtime, and libraries embedded)
 exe = EXE(
     pyz,
@@ -91,6 +96,7 @@ exe = EXE(
     a.datas,
     [],
     name="UpstoxBridge",
+    icon=str(icon_file) if icon_file.exists() else None,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

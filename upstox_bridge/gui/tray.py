@@ -19,7 +19,19 @@ logger = logging.getLogger("SystemTray")
 
 
 def create_tray_icon_image(color: str = "#16a34a", text: str = "U") -> Image.Image:
-    """Generate a sharp circular tray icon with status color."""
+    """Generate tray icon using brand asset with dynamic status indicator dot."""
+    from pathlib import Path
+    assets_icon = Path(__file__).resolve().parent.parent.parent / "assets" / "app_icon.png"
+    if assets_icon.exists():
+        try:
+            base = Image.open(assets_icon).convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+            draw = ImageDraw.Draw(base)
+            # Add dynamic status badge dot in bottom right corner
+            draw.ellipse([44, 44, 62, 62], fill=color, outline="#080A0F", width=2)
+            return base
+        except Exception:
+            pass
+
     size = (64, 64)
     image = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)

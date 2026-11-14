@@ -131,16 +131,33 @@ This proposal details concrete, actionable enhancements to transform the applica
 
 ---
 
-## 6. Design System Color Tokens
+## 6. Design System Color Tokens — Pure Dark Black (OLED Pitch Black)
+
+The visual design is anchored on a **Pure Dark Black (`#000000` / `#08080A`)** foundation rather than washed-out graphite or slate. This creates infinite contrast ratios, eliminates eye strain during multi-hour trading sessions, and makes market data badges instantly pop with surgical clarity.
 
 | Token Name | Hex Code | Purpose |
 | :--- | :--- | :--- |
-| `bg-app` | `#0B0F19` | Deep slate-black canvas background |
-| `card-surface` | `#151D2E` | Elevated component surface |
-| `card-border` | `#23314D` | Subtle border separation |
-| `text-primary` | `#F8FAFC` | Main metrics, prices, and symbols |
-| `text-secondary` | `#94A3B8` | Labels, headers, timestamps |
-| `status-bull` | `#10B981` | Uptick, live connection, success badge |
-| `status-bear` | `#EF4444` | Downtick, disconnected, error state |
-| `status-accent` | `#38BDF8` | Buttons, active tabs, highlights |
-| `status-warning`| `#F59E0B` | Simulation mode, cell-edit lock, token expiry warning |
+| `bg-canvas` | `#000000` | True Pitch Black application backdrop (zero backlight glow on OLED) |
+| `bg-subtle` | `#08080A` | Secondary section background |
+| `card-surface` | `#101114` | Deep obsidian component card surface |
+| `card-surface-elevated` | `#16171B` | Hover state and active interactive card surface |
+| `card-border` | `#1E2026` | 1px razor-sharp boundary separating functional widgets |
+| `card-border-active` | `#2E323D` | Focused element or active card border |
+| `text-primary` | `#FFFFFF` | 100% pure high-contrast white for metrics, symbols, and LTP |
+| `text-secondary` | `#A1A1AA` | Neutral zinc-400 for subtext, timestamps, and column labels |
+| `brand-cyan` | `#08B6DE` | Signal Cyan (from BA Brand Assets) for primary buttons, active tabs & links |
+| `brand-amber` | `#F5A623` | Signal Amber (from BA Brand Assets) for warnings, sim mode, and bridge frequency |
+| `status-bull` | `#00E676` | Neon Emerald for upticks, positive daily delta, and active WebSocket connection |
+| `status-bear` | `#FF334B` | Vivid Crimson for downticks, negative delta, and connection disconnects |
+| `flash-bull-bg` | `#052414` | Subtle 300ms dark-emerald background flash on live price uptick |
+| `flash-bear-bg` | `#2E0A0E` | Subtle 300ms dark-crimson background flash on live price downtick |
+
+---
+
+## 7. Brand Asset & Iconography Integration
+
+The standalone desktop executable (`UpstoxBridge.exe` / macOS `.app`) and system tray utilize the dedicated product symbol from the Bhavin Amesara Brand Asset pack (`products/trading-bridge/bridge-symbol.svg`):
+
+* **Symbol Semantics**: Two terminal endpoint nodes (Upstox broker on left, destination sheet/client on right) united by a high-speed data stream (`#F7FAFC`) and harmonic frequency arches (`#F5A623 Signal Amber`).
+* **Multi-Resolution Windows Executable (.ico)**: Bundled in `assets/app_icon.ico` supporting 16×16, 24×24, 32×32, 48×48, 64×64, 128×128, and 256×256 pixels, guaranteeing crisp rendering on low-DPI taskbars and 4K high-DPI displays.
+* **Dark Black Theme Variant**: Created in `assets/app_icon_dark.ico` and `assets/app_icon_dark.png` with a pitch-black squircle backdrop (`#080A0F`) and subtle `#1C2333` rim, perfectly matching the OLED Dark Black workstation theme.

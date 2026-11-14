@@ -55,6 +55,22 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         self.geometry("880x640")
         self.minsize(800, 560)
 
+        # Set application icon (taskbar / title bar)
+        icon_ico = settings.root_dir / "assets" / "app_icon.ico"
+        icon_png = settings.root_dir / "assets" / "app_icon.png"
+        if sys.platform == "win32" and icon_ico.exists():
+            try:
+                self.wm_iconbitmap(str(icon_ico))
+            except Exception:
+                pass
+        elif icon_png.exists():
+            try:
+                from PIL import ImageTk
+                self._app_icon_photo = ImageTk.PhotoImage(file=str(icon_png))
+                self.wm_iconphoto(True, self._app_icon_photo)
+            except Exception:
+                pass
+
         ctk.set_appearance_mode("Dark")
         ctk.set_default_color_theme("blue")
 

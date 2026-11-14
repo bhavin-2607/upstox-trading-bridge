@@ -70,5 +70,29 @@ class TestOptionsAndLogger(unittest.TestCase):
         self.assertEqual(effective_ltp, 5.50)
 
 
+    def test_setup_production_logging_purges_unsafe_stream_handlers(self):
+        """Verify setup_production_logging strips unsafe StreamHandlers with None stream."""
+        from upstox_bridge.core.logger import setup_production_logging
+
+        root_logger = logging.getLogger()
+        # Add an unsafe standard StreamHandler with stream=None (like basicConfig does on headless Windows)
+        unsafe_handler = logging.StreamHandler(stream=None)
+        root_logger.addHandler(unsafe_handler)
+        self.assertIn(unsafe_handler, root_logger.handlers)
+
+        # Run setup_production_logging
+        setup_production_logging()
+
+        # Unsafe standard StreamHandler must be purged from root_logger
+        self.assertNotIn(unsafe_handler, root_logger.handlers)
+
+        # Logging must succeed without AttributeError
+        test_log = logging.getLogger("TestPurgeSafe")
+        try:
+            test_log.info("Safe log message after purge verification.")
+        except Exception as e:
+            self.fail(f"Logger crashed after setup_production_logging: {e}")
+
+
 if __name__ == "__main__":
     unittest.main()
