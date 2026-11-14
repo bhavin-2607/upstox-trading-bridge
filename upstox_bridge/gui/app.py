@@ -524,9 +524,9 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         self.after(500, self._telemetry_loop)
 
     def _on_close_clicked(self):
-        """Minimize to tray if running, or prompt to quit."""
-        if self.runner and self.runner.is_running:
-            self.withdraw()  # Hide window to system tray
+        """Minimize to tray if running on Windows with active tray, or quit."""
+        if sys.platform == "win32" and self.runner and self.runner.is_running and self.tray and self.tray._icon:
+            self.withdraw()  # Hide window to system tray on Windows
         else:
             self._quit_application()
 

@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 from typing import Callable, Optional
 from PIL import Image, ImageDraw
-import pystray
+
+try:
+    import pystray
+    _PYSTRAY_AVAILABLE = True
+except Exception:
+    pystray = None
+    _PYSTRAY_AVAILABLE = False
 
 logger = logging.getLogger("SystemTray")
 
@@ -46,7 +53,11 @@ class SystemTrayController:
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        """Start system tray in a background thread."""
+        """Start system tray in a background thread (Windows only)."""
+        if sys.platform != "win32" or not _PYSTRAY_AVAILABLE:
+            logger.info("System tray is disabled on macOS/Linux (AppKit requires main-thread run loop; uses standard macOS Dock).")
+            return
+
         image = create_tray_icon_image(color="#64748b", text="U")
 
         menu = pystray.Menu(
