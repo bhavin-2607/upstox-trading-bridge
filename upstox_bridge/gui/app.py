@@ -550,16 +550,12 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         sys.exit(0)
 
 
-def launch_gui(prefer_web: bool = False):
-    """Entry point to launch the UI: uses CustomTkinter if available, else Web Dashboard."""
-    if not prefer_web and _TK_AVAILABLE:
-        try:
-            app = UpstoxBridgeApp()
-            app.mainloop()
-            return
-        except Exception as e:
-            logger.warning(f"Native Desktop GUI failed to initialize ({e}). Launching Web Dashboard...")
+def launch_gui():
+    """Entry point to launch the native CustomTkinter Desktop application."""
+    if not _TK_AVAILABLE:
+        print("[ERROR] Tkinter is not installed on this Python build.")
+        print("On macOS with Homebrew, please run: brew install python-tk@3.15")
+        sys.exit(1)
 
-    # Fallback to Web Dashboard (works on all platforms without Tkinter)
-    from upstox_bridge.gui.web_dashboard import launch_web_dashboard
-    launch_web_dashboard()
+    app = UpstoxBridgeApp()
+    app.mainloop()

@@ -14,6 +14,7 @@ except Exception:
 
 from upstox_bridge.core.config import settings, update_env_variable
 from upstox_bridge.destinations.gsheet_webhook import GoogleSheetWebhookSyncer
+from upstox_bridge.gui.debug_console import is_debug_console_active, set_debug_console
 
 
 class SettingsDialog(ctk.CTkToplevel if ctk else object):
@@ -27,7 +28,7 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         self.on_save_callback = on_save_callback
 
         self.title("Configuration & Credentials")
-        self.geometry("640x540")
+        self.geometry("640x590")
         self.resizable(False, False)
 
         # Center on parent
@@ -167,6 +168,42 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         )
         test_btn.pack(side="right")
 
+        # 4. Debug Console Option (Windows)
+        debug_frame = ctk.CTkFrame(self)
+        debug_frame.pack(fill="x", padx=pad_x, pady=8)
+
+        debug_row = ctk.CTkFrame(debug_frame, fg_color="transparent")
+        debug_row.pack(fill="x", padx=12, pady=10)
+
+        debug_info_col = ctk.CTkFrame(debug_row, fg_color="transparent")
+        debug_info_col.pack(side="left", fill="x", expand=True)
+
+        debug_lbl = ctk.CTkLabel(
+            debug_info_col,
+            text="Debug Terminal Window:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        )
+        debug_lbl.pack(anchor="w")
+
+        debug_sub = ctk.CTkLabel(
+            debug_info_col,
+            text="Show live background command prompt window (Windows only)",
+            font=ctk.CTkFont(size=11),
+            text_color="#94a3b8",
+        )
+        debug_sub.pack(anchor="w")
+
+        self.debug_switch = ctk.CTkSwitch(
+            debug_row,
+            text="Enabled" if is_debug_console_active() else "Hidden",
+            command=self._on_debug_switch_toggled,
+        )
+        self.debug_switch.pack(side="right")
+        if is_debug_console_active():
+            self.debug_switch.select()
+        else:
+            self.debug_switch.deselect()
+
         # Bottom Action Buttons
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.pack(fill="x", padx=pad_x, pady=(16, 16), side="bottom")
@@ -236,6 +273,11 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             messagebox.showinfo("Success", res.get("message", "Google Sheet connection successful!"), parent=self)
         else:
             messagebox.showerror("Connection Failed", res.get("error", "Failed to connect to Google Sheet."), parent=self)
+
+    def _on_debug_switch_toggled(self):
+        is_on = bool(self.debug_switch.get())
+        self.debug_switch.configure(text="Enabled" if is_on else "Hidden")
+        set_debug_console(is_on)
 
     def _save_settings(self):
         token_val = self.token_entry.get().strip()

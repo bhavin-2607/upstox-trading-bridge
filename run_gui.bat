@@ -13,4 +13,8 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
-start "" .venv\Scripts\python.exe main.py gui
+if exist ".venv\Scripts\pythonw.exe" (
+    start "" ".venv\Scripts\pythonw.exe" main.py gui
+) else (
+    start "" ".venv\Scripts\python.exe" main.py gui
+)
