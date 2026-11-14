@@ -923,100 +923,104 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
     # =========================================================================
 
     def _telemetry_loop(self):
-        """Periodic 500ms loop updating dashboard metrics, watchlist cards, and activity log."""
+        """Periodic 500ms loop updating dashboard metrics, clock, watchlist cards, and activity log."""
         if self._is_closing:
             return
 
-        # 1. Update Market Session & Clock
-        ses_txt, clock_txt, ses_col, ses_bg, ses_border = get_market_sessions()
-        self.pill_session.configure(fg_color=ses_bg, border_color=ses_border)
-        self.lbl_session.configure(text=ses_txt, text_color=ses_col)
-        self.lbl_clock.configure(text=f"🕒 {clock_txt}")
+        try:
+            # 1. Update Market Session & Clock
+            ses_txt, clock_txt, ses_col, ses_bg, ses_border = get_market_sessions()
+            self.pill_session.configure(fg_color=ses_bg, border_color=ses_border)
+            self.lbl_session.configure(text=ses_txt, text_color=ses_col)
+            self.lbl_clock.configure(text=f"🕒 {clock_txt}")
 
-        # 2. Update Feed & Telemetry Cards
-        if self.runner and self.runner.is_running:
-            if self.runner.is_simulation:
-                self.card_feed["status"].configure(text="● SIMULATION", text_color=COLOR_BRAND_AMBER)
+            # 2. Update Feed & Telemetry Cards
+            if self.runner and self.runner.is_running:
+                if self.runner.is_simulation:
+                    self.card_feed["status"].configure(text="● SIMULATION", text_color=COLOR_BRAND_AMBER)
+                else:
+                    self.card_feed["status"].configure(text="● LIVE FEED", text_color=COLOR_STATUS_BULL)
+
+                ticks = self.runner.ticks_received
+                tracked_count = self.runner.market_store.count()
+                self.card_feed["detail_1"].configure(text=f"{ticks:,} ticks processed")
+                self.card_feed["detail_2"].configure(text=f"{tracked_count} instruments streaming")
+
+                # Excel Card status
+                excel_st = self.runner.excel_status
+                excel_color = COLOR_STATUS_BULL if excel_st == "Connected" else (COLOR_BRAND_AMBER if "Edit" in excel_st else COLOR_TEXT_SECONDARY)
+                self.card_excel["status"].configure(text=excel_st.upper(), text_color=excel_color)
+
+                # Google Sheets Card status
+                gs_st = self.runner.gsheet_status
+                self.card_gsheet["status"].configure(
+                    text=gs_st.upper(),
+                    text_color=COLOR_STATUS_BULL if "Active" in gs_st else COLOR_TEXT_SECONDARY,
+                )
+
+                self.card_server["status"].configure(text="STREAMING", text_color=COLOR_STATUS_BULL)
+
+                # 3. Update Pinned Mini-Watchlist Cards with Live Ticks
+                store = self.runner.market_store
+                for key, ui_card in self.watchlist_cards.items():
+                    item = store.get_quote_item(key)
+                    if item:
+                        ltp = item.ltp if (item.ltp and item.ltp > 0) else (item.close or item.prev_close or 0.0)
+                        prev_c = item.prev_close or item.close or ltp or 0.0
+                        delta = ltp - prev_c if prev_c else 0.0
+                        pct = (delta / prev_c * 100) if prev_c else 0.0
+
+                        # Format LTP with tabular precision
+                        ui_card["ltp"].configure(text=f"₹{ltp:,.2f}")
+
+                        if delta >= 0:
+                            ui_card["delta"].configure(text=f"▲ +{delta:.2f} (+{pct:.2f}%)", text_color=COLOR_STATUS_BULL)
+                        else:
+                            ui_card["delta"].configure(text=f"▼ {delta:.2f} ({pct:.2f}%)", text_color=COLOR_STATUS_BEAR)
+
+                        h_val = f"{item.high:,.2f}" if item.high else (f"{item.prev_high:,.2f}" if item.prev_high else "-")
+                        l_val = f"{item.low:,.2f}" if item.low else (f"{item.prev_low:,.2f}" if item.prev_low else "-")
+                        ui_card["range"].configure(text=f"H: {h_val}  L: {l_val}")
+
+                        # Tick Flash Interaction
+                        old_ltp = ui_card["last_ltp"]
+                        if old_ltp > 0 and ltp != old_ltp:
+                            flash_color = COLOR_FLASH_BULL if ltp > old_ltp else COLOR_FLASH_BEAR
+                            ui_card["card"].configure(fg_color=flash_color)
+                            self.after(300, lambda c=ui_card["card"]: c.configure(fg_color=COLOR_CARD_SURFACE))
+                        ui_card["last_ltp"] = ltp
             else:
-                self.card_feed["status"].configure(text="● LIVE FEED", text_color=COLOR_STATUS_BULL)
+                if not self.btn_live.cget("state") == "disabled":
+                    self.card_feed["status"].configure(text="STOPPED", text_color=COLOR_TEXT_SECONDARY)
+                    self.card_server["status"].configure(text="STANDBY", text_color=COLOR_BRAND_AMBER)
 
-            ticks = self.runner.ticks_received
-            tracked_count = len(self.runner.market_store.get_all_quotes())
-            self.card_feed["detail_1"].configure(text=f"{ticks:,} ticks processed")
-            self.card_feed["detail_2"].configure(text=f"{tracked_count} instruments streaming")
+            # 4. Update Activity Console Logs
+            recent_logs = get_gui_logs()
+            if recent_logs:
+                current_text = self.log_textbox.get("1.0", "end-1c")
+                current_count = len(current_text.splitlines()) if current_text else 0
+                if len(recent_logs) > current_count:
+                    new_lines = recent_logs[current_count:]
+                    # Filter new lines
+                    to_append = []
+                    for line in new_lines:
+                        if self._log_filter == "ALL":
+                            to_append.append(line)
+                        elif self._log_filter == "TICKS" and any(k in line for k in ("FeedStreamer", "tick", "Subscribed", "LTP", "Quote")):
+                            to_append.append(line)
+                        elif self._log_filter == "SYNC" and any(k in line for k in ("BSTSyncer", "Excel", "GoogleSheet", "sync", "Row")):
+                            to_append.append(line)
+                        elif self._log_filter == "ALERTS" and any(k in line for k in ("WARNING", "ERROR", "failed", "Exception", "alert")):
+                            to_append.append(line)
 
-            # Excel Card status
-            excel_st = self.runner.excel_status
-            excel_color = COLOR_STATUS_BULL if excel_st == "Connected" else (COLOR_BRAND_AMBER if "Edit" in excel_st else COLOR_TEXT_SECONDARY)
-            self.card_excel["status"].configure(text=excel_st.upper(), text_color=excel_color)
-
-            # Google Sheets Card status
-            gs_st = self.runner.gsheet_status
-            self.card_gsheet["status"].configure(
-                text=gs_st.upper(),
-                text_color=COLOR_STATUS_BULL if "Active" in gs_st else COLOR_TEXT_SECONDARY,
-            )
-
-            self.card_server["status"].configure(text="STREAMING", text_color=COLOR_STATUS_BULL)
-
-            # 3. Update Pinned Mini-Watchlist Cards with Live Ticks
-            store = self.runner.market_store
-            for key, ui_card in self.watchlist_cards.items():
-                item = store.get_quote_item(key)
-                if item:
-                    ltp = item.ltp if (item.ltp and item.ltp > 0) else (item.close or item.prev_close or 0.0)
-                    prev_c = item.prev_close or item.close or ltp or 0.0
-                    delta = ltp - prev_c if prev_c else 0.0
-                    pct = (delta / prev_c * 100) if prev_c else 0.0
-
-                    # Format LTP with tabular precision
-                    ui_card["ltp"].configure(text=f"₹{ltp:,.2f}")
-
-                    if delta >= 0:
-                        ui_card["delta"].configure(text=f"▲ +{delta:.2f} (+{pct:.2f}%)", text_color=COLOR_STATUS_BULL)
-                    else:
-                        ui_card["delta"].configure(text=f"▼ {delta:.2f} ({pct:.2f}%)", text_color=COLOR_STATUS_BEAR)
-
-                    h_val = f"{item.high:,.2f}" if item.high else (f"{item.prev_high:,.2f}" if item.prev_high else "-")
-                    l_val = f"{item.low:,.2f}" if item.low else (f"{item.prev_low:,.2f}" if item.prev_low else "-")
-                    ui_card["range"].configure(text=f"H: {h_val}  L: {l_val}")
-
-                    # Tick Flash Interaction
-                    old_ltp = ui_card["last_ltp"]
-                    if old_ltp > 0 and ltp != old_ltp:
-                        flash_color = COLOR_FLASH_BULL if ltp > old_ltp else COLOR_FLASH_BEAR
-                        ui_card["card"].configure(fg_color=flash_color)
-                        self.after(300, lambda c=ui_card["card"]: c.configure(fg_color=COLOR_CARD_SURFACE))
-                    ui_card["last_ltp"] = ltp
-        else:
-            if not self.btn_live.cget("state") == "disabled":
-                self.card_feed["status"].configure(text="STOPPED", text_color=COLOR_TEXT_SECONDARY)
-                self.card_server["status"].configure(text="STANDBY", text_color=COLOR_BRAND_AMBER)
-
-        # 4. Update Activity Console Logs
-        recent_logs = get_gui_logs()
-        if recent_logs:
-            current_text = self.log_textbox.get("1.0", "end-1c")
-            current_count = len(current_text.splitlines()) if current_text else 0
-            if len(recent_logs) > current_count:
-                new_lines = recent_logs[current_count:]
-                # Filter new lines
-                to_append = []
-                for line in new_lines:
-                    if self._log_filter == "ALL":
-                        to_append.append(line)
-                    elif self._log_filter == "TICKS" and any(k in line for k in ("FeedStreamer", "tick", "Subscribed", "LTP", "Quote")):
-                        to_append.append(line)
-                    elif self._log_filter == "SYNC" and any(k in line for k in ("BSTSyncer", "Excel", "GoogleSheet", "sync", "Row")):
-                        to_append.append(line)
-                    elif self._log_filter == "ALERTS" and any(k in line for k in ("WARNING", "ERROR", "failed", "Exception", "alert")):
-                        to_append.append(line)
-
-                if to_append:
-                    self.log_textbox.insert("end", "\n".join(to_append) + "\n")
-                    self.log_textbox.see("end")
-
-        self.after(500, self._telemetry_loop)
+                    if to_append:
+                        self.log_textbox.insert("end", "\n".join(to_append) + "\n")
+                        self.log_textbox.see("end")
+        except Exception as e:
+            logger.debug(f"Telemetry loop error: {e}")
+        finally:
+            if not self._is_closing:
+                self.after(500, self._telemetry_loop)
 
     def _on_close_clicked(self):
         """Minimize to tray if running on Windows with active tray, or quit."""

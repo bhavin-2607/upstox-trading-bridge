@@ -297,6 +297,11 @@ class MarketStore:
 
             return matrix
 
+    def get_all_quotes(self) -> Dict[str, QuoteItem]:
+        """Get all quote items keyed by instrument key."""
+        with self._lock:
+            return dict(self._quotes)
+
     def get_all_quotes_dict(self) -> Dict[str, Dict[str, Any]]:
         """Get all quotes as dictionary keyed by symbol."""
         with self._lock:
