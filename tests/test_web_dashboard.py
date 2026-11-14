@@ -21,7 +21,7 @@ class FakeSocket:
 
 class TestWebDashboard(unittest.TestCase):
     def test_dashboard_html_contents(self):
-        self.assertIn("<title>Upstox Live Trading Bridge</title>", DASHBOARD_HTML)
+        self.assertIn("<title>BSA Trading Bridge</title>", DASHBOARD_HTML)
         self.assertIn("btn-start-live", DASHBOARD_HTML)
         self.assertIn("btn-start-sim", DASHBOARD_HTML)
         self.assertIn("btn-stop", DASHBOARD_HTML)

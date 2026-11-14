@@ -16,6 +16,7 @@ except Exception:
 from upstox_bridge.core.config import get_asset_path, settings, update_env_variable
 from upstox_bridge.destinations.gsheet_webhook import GoogleSheetWebhookSyncer
 from upstox_bridge.gui.debug_console import is_debug_console_active, set_debug_console
+from upstox_bridge.gui.icons import IconManager
 
 
 class SettingsDialog(ctk.CTkToplevel if ctk else object):
@@ -28,8 +29,8 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         self.parent = parent
         self.on_save_callback = on_save_callback
 
-        self.title("Configuration & Credentials")
-        self.geometry("640x590")
+        self.title("BSA Trading Bridge — Settings & Credentials")
+        self.geometry("640x660")
         self.resizable(False, False)
 
         # Apply Pure Dark Black OLED canvas styling
@@ -71,7 +72,36 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color="#FFFFFF",
         )
-        title_label.pack(padx=pad_x, pady=(20, 10), anchor="w")
+        title_label.pack(padx=pad_x, pady=(16, 6), anchor="w")
+
+        # Official Brand Endorsement Card
+        endorse_frame = ctk.CTkFrame(self, fg_color="#0B1933", border_color="#1687E8", border_width=1, corner_radius=10)
+        endorse_frame.pack(fill="x", padx=pad_x, pady=(0, 10))
+
+        endorse_inner = ctk.CTkFrame(endorse_frame, fg_color="transparent")
+        endorse_inner.pack(fill="x", padx=12, pady=8)
+
+        ba_logo = IconManager.get_icon("ba_monogram", size=(28, 28))
+        if ba_logo:
+            ba_lbl = ctk.CTkLabel(endorse_inner, text="", image=ba_logo)
+            ba_lbl.pack(side="left", padx=(0, 10))
+
+        txt_col = ctk.CTkFrame(endorse_inner, fg_color="transparent")
+        txt_col.pack(side="left")
+
+        ctk.CTkLabel(
+            txt_col,
+            text="AN INDEPENDENT PRODUCT BY BHAVIN AMESARA",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#F7FAFC",
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            txt_col,
+            text="BSA Trading Bridge  •  Engine Build 2.0.0",
+            font=ctk.CTkFont(size=10),
+            text_color="#A9B8CC",
+        ).pack(anchor="w")
 
         # 1. Upstox Access Token
         token_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
@@ -119,7 +149,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
 
         paste_btn = ctk.CTkButton(
             token_btn_row,
-            text="Paste from Clipboard",
+            text=" Paste Token",
+            image=IconManager.get_icon("token", size=(13, 13)),
+            compound="left",
             width=140,
             height=26,
             command=self._paste_token,
@@ -152,8 +184,10 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
 
         browse_btn = ctk.CTkButton(
             excel_row,
-            text="Browse...",
-            width=80,
+            text=" Browse...",
+            image=IconManager.get_icon("excel", size=(13, 13)),
+            compound="left",
+            width=95,
             height=32,
             fg_color="#16171B",
             hover_color="#23252E",
@@ -206,8 +240,10 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
 
         test_btn = ctk.CTkButton(
             gsheet_row,
-            text="Test Hook",
-            width=90,
+            text=" Test Hook",
+            image=IconManager.get_icon("feed", size=(13, 13)),
+            compound="left",
+            width=100,
             height=32,
             command=self._test_gsheet,
             fg_color="#16171B",
@@ -260,7 +296,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
 
         cancel_btn = ctk.CTkButton(
             btn_row,
-            text="Cancel",
+            text=" Cancel",
+            image=IconManager.get_icon("clear", size=(13, 13)),
+            compound="left",
             width=100,
             height=36,
             fg_color="#16171B",
@@ -274,7 +312,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
 
         save_btn = ctk.CTkButton(
             btn_row,
-            text="Save Changes",
+            text=" Save Changes",
+            image=IconManager.get_icon("play", size=(13, 13)),
+            compound="left",
             width=140,
             height=36,
             fg_color="#08B6DE",

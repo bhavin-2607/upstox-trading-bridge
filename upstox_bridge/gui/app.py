@@ -25,6 +25,7 @@ except Exception:
 
 from upstox_bridge.core.config import get_asset_path, settings
 from upstox_bridge.core.logger import get_gui_logs, setup_production_logging
+from upstox_bridge.gui.icons import IconManager
 from upstox_bridge.gui.settings_dialog import SettingsDialog
 from upstox_bridge.gui.tray import SystemTrayController
 from upstox_bridge.runner import BridgeRunner
@@ -33,7 +34,23 @@ from upstox_bridge.runner import BridgeRunner
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("bhavinamesara.upstoxbridge.desktop.2_0")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("bhavinamesara.bsatradingbridge.desktop.2_0")
+    except Exception:
+        pass
+
+# Monkey-patch CustomTkinter's default Windows icon setter so it never replaces custom icon
+if _TK_AVAILABLE and ctk:
+    def _patched_windows_set_titlebar_icon(self):
+        try:
+            ico_path = get_asset_path("app_icon.ico")
+            if sys.platform == "win32" and ico_path.exists():
+                self.iconbitmap(default=str(ico_path))
+        except Exception:
+            pass
+
+    try:
+        ctk.CTk._windows_set_titlebar_icon = _patched_windows_set_titlebar_icon
+        ctk.CTkToplevel._windows_set_titlebar_icon = _patched_windows_set_titlebar_icon
     except Exception:
         pass
 
@@ -120,7 +137,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         setup_production_logging()
 
         # Window Configuration & Dimensions
-        self.title("BSA Trading Bridge — Institutional Edition")
+        self.title("BSA Trading Bridge — Market Data Engine")
         self.geometry("960x780")
         self.minsize(900, 680)
 
@@ -217,26 +234,16 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         title_col = ctk.CTkFrame(header_frame, fg_color="transparent")
         title_col.pack(side="left")
 
-        logo_path = get_asset_path("app_icon.png")
-        if logo_path.exists():
-            try:
-                logo_pil = Image.open(logo_path)
-                self._header_logo = ctk.CTkImage(light_image=logo_pil, dark_image=logo_pil, size=(24, 24))
-                app_title = ctk.CTkLabel(
-                    title_col,
-                    text="  BSA TRADING BRIDGE",
-                    image=self._header_logo,
-                    compound="left",
-                    font=ctk.CTkFont(size=20, weight="bold"),
-                    text_color=COLOR_TEXT_PRIMARY,
-                )
-            except Exception:
-                app_title = ctk.CTkLabel(
-                    title_col,
-                    text="BSA TRADING BRIDGE",
-                    font=ctk.CTkFont(size=20, weight="bold"),
-                    text_color=COLOR_TEXT_PRIMARY,
-                )
+        self._header_logo = IconManager.get_icon("bridge_logo", size=(26, 26))
+        if self._header_logo:
+            app_title = ctk.CTkLabel(
+                title_col,
+                text="  BSA TRADING BRIDGE",
+                image=self._header_logo,
+                compound="left",
+                font=ctk.CTkFont(size=20, weight="bold"),
+                text_color=COLOR_TEXT_PRIMARY,
+            )
         else:
             app_title = ctk.CTkLabel(
                 title_col,
@@ -248,9 +255,9 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
 
         app_sub = ctk.CTkLabel(
             title_col,
-            text="Institutional Real-Time Feed Engine for Excel & Google Sheets",
+            text="An independent product by Bhavin Amesara  •  Real-Time Market Data Engine",
             font=ctk.CTkFont(size=11),
-            text_color=COLOR_TEXT_SECONDARY,
+            text_color="#A9B8CC",
         )
         app_sub.pack(anchor="w")
 
@@ -275,9 +282,12 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             cockpit_pills, fg_color="#101114", border_color=COLOR_CARD_BORDER, border_width=1, corner_radius=14
         )
         self.pill_clock.pack(side="left", padx=4)
+        self._clock_icon = IconManager.get_icon("clock", size=(13, 13))
         self.lbl_clock = ctk.CTkLabel(
             self.pill_clock,
-            text=clock_txt,
+            text=f" {clock_txt}",
+            image=self._clock_icon,
+            compound="left",
             font=ctk.CTkFont(family="Consolas" if sys.platform == "win32" else "Menlo", size=11, weight="bold"),
             text_color=COLOR_TEXT_PRIMARY,
         )
@@ -289,8 +299,14 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             cockpit_pills, fg_color=tok_bg, border_color=tok_border, border_width=1, corner_radius=14
         )
         self.pill_token.pack(side="left", padx=4)
+        self._token_icon = IconManager.get_icon("token", size=(13, 13))
         self.lbl_token = ctk.CTkLabel(
-            self.pill_token, text=tok_txt, font=ctk.CTkFont(size=11, weight="bold"), text_color=tok_col
+            self.pill_token,
+            text=f" {tok_txt}",
+            image=self._token_icon,
+            compound="left",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=tok_col,
         )
         self.lbl_token.pack(padx=10, pady=3)
 
@@ -325,13 +341,15 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
 
         self.btn_add_script = ctk.CTkButton(
             bar_inner,
-            text="+ Add to Sheet",
+            text=" Add to Sheet",
+            image=IconManager.get_icon("add", size=(14, 14)),
+            compound="left",
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color=COLOR_BRAND_CYAN,
             hover_color="#0693b3",
             text_color="#FFFFFF",
             height=34,
-            width=130,
+            width=135,
             command=self._on_quick_add_script,
         )
         self.btn_add_script.pack(side="right")
@@ -621,39 +639,45 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         # Left action buttons
         self.btn_live = ctk.CTkButton(
             control_frame,
-            text="Start Live Feed",
+            text=" Start Live Feed",
+            image=IconManager.get_icon("play", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color="#059669",
             hover_color="#10b981",
             text_color="#FFFFFF",
             height=36,
-            width=145,
+            width=150,
             command=self._start_live_bridge,
         )
         self.btn_live.pack(side="left", padx=10, pady=8)
 
         self.btn_sim = ctk.CTkButton(
             control_frame,
-            text="Run Simulation",
+            text=" Run Simulation",
+            image=IconManager.get_icon("simulate", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color=COLOR_BRAND_CYAN,
             hover_color="#0693b3",
             text_color="#FFFFFF",
             height=36,
-            width=145,
+            width=150,
             command=self._start_simulation,
         )
         self.btn_sim.pack(side="left", padx=(0, 10), pady=8)
 
         self.btn_stop = ctk.CTkButton(
             control_frame,
-            text="Stop Bridge",
+            text=" Stop Bridge",
+            image=IconManager.get_icon("stop", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color="#e11d48",
             hover_color="#f43f5e",
             text_color="#FFFFFF",
             height=36,
-            width=110,
+            width=120,
             state="disabled",
             command=self._stop_bridge,
         )
@@ -662,7 +686,9 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         # Right utility buttons
         self.btn_settings = ctk.CTkButton(
             control_frame,
-            text="Settings & Token",
+            text=" Settings & Token",
+            image=IconManager.get_icon("settings", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#16171B",
             hover_color="#23252E",
@@ -670,14 +696,16 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             border_width=1,
             text_color=COLOR_TEXT_PRIMARY,
             height=36,
-            width=140,
+            width=150,
             command=self._open_settings,
         )
         self.btn_settings.pack(side="right", padx=10, pady=8)
 
         self.btn_open_excel = ctk.CTkButton(
             control_frame,
-            text="Open in Excel",
+            text=" Open in Excel",
+            image=IconManager.get_icon("excel", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(size=12),
             fg_color="#16171B",
             hover_color="#23252E",
@@ -685,7 +713,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             border_width=1,
             text_color=COLOR_TEXT_PRIMARY,
             height=36,
-            width=120,
+            width=135,
             command=self._open_excel_file,
         )
         self.btn_open_excel.pack(side="right", padx=(0, 6), pady=8)
@@ -743,8 +771,10 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         # Utility Buttons
         clear_btn = ctk.CTkButton(
             log_header,
-            text="Clear",
-            width=55,
+            text=" Clear",
+            image=IconManager.get_icon("clear", size=(12, 12)),
+            compound="left",
+            width=68,
             height=24,
             font=ctk.CTkFont(size=10),
             fg_color="#16171B",
@@ -946,8 +976,8 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             # 1. Update Market Session & Clock
             ses_txt, clock_txt, ses_col, ses_bg, ses_border = get_market_sessions()
             self.pill_session.configure(fg_color=ses_bg, border_color=ses_border)
-            self.lbl_session.configure(text=ses_txt, text_color=ses_col)
-            self.lbl_clock.configure(text=clock_txt)
+            self.lbl_session.configure(text=session_txt if 'session_txt' in locals() else ses_txt, text_color=ses_col)
+            self.lbl_clock.configure(text=f" {clock_txt}")
 
             # 2. Update Feed & Telemetry Cards
             if self.runner and self.runner.is_running:

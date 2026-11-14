@@ -36,7 +36,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Upstox Live Trading Bridge</title>
+  <title>BSA Trading Bridge</title>
   <style>
     :root {
       --bg: #0b0f19;
@@ -773,7 +773,7 @@ def launch_web_dashboard(
 
     url = f"http://{host}:{active_port}/dashboard"
     print("\n" + "=" * 70)
-    print("       UPSTOX TRADING BRIDGE - WEB DASHBOARD")
+    print("       BSA TRADING BRIDGE - WEB DASHBOARD")
     print("=" * 70)
     print(f"  [OK] Dashboard Server active at: {url}")
     print("  Controls available: Live Streaming, Simulation, Settings, Logs")

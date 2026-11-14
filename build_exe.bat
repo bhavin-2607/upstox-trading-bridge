@@ -36,6 +36,9 @@ echo [*] Compiling Standalone Windows Single-File Executable via PyInstaller...
 echo     (Embedding Python runtime, python3XX.dll, and all dependencies into one file)
 echo.
 
+set "PYINSTALLER_CONFIG_DIR=%~dp0.pyinstaller_cache"
+if not exist "%PYINSTALLER_CONFIG_DIR%" mkdir "%PYINSTALLER_CONFIG_DIR%"
+
 !PYTHON_EXE! -m PyInstaller upstox_bridge.spec --clean --noconfirm
 
 if errorlevel 1 (
@@ -51,6 +54,9 @@ REM 4. Clean up intermediate build scratch folder so users never open it by mist
 if exist "build" (
     echo [*] Removing intermediate build cache folder...
     rmdir /s /q "build"
+)
+if exist ".pyinstaller_cache" (
+    rmdir /s /q ".pyinstaller_cache"
 )
 
 REM 5. Copy auxiliary configuration files alongside dist\UpstoxBridge.exe
@@ -74,10 +80,10 @@ echo ===========================================================================
 echo [SUCCESS] Standalone Single-File Executable Built Successfully!
 echo ==============================================================================
 echo  Executable location:
-echo    dist\UpstoxBridge.exe
+echo    dist\BSATradingBridge.exe
 echo.
 echo  This is a 100%% self-contained single executable. All Python DLLs and
-echo  libraries are embedded inside. You can copy 'dist\UpstoxBridge.exe'
+echo  libraries are embedded inside. You can copy 'dist\BSATradingBridge.exe'
 echo  and 'dist\.env' to any Windows PC and double-click to run!
 echo ==============================================================================
 echo.

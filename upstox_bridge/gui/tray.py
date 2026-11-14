@@ -18,10 +18,10 @@ except Exception:
 logger = logging.getLogger("SystemTray")
 
 
-def create_tray_icon_image(color: str = "#16a34a", text: str = "U") -> Image.Image:
+def create_tray_icon_image(color: str = "#16a34a", text: str = "B") -> Image.Image:
     """Generate tray icon using brand asset with dynamic status indicator dot."""
-    from pathlib import Path
-    assets_icon = Path(__file__).resolve().parent.parent.parent / "assets" / "app_icon.png"
+    from upstox_bridge.core.config import get_asset_path
+    assets_icon = get_asset_path("app_icon.png")
     if assets_icon.exists():
         try:
             base = Image.open(assets_icon).convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
@@ -39,7 +39,7 @@ def create_tray_icon_image(color: str = "#16a34a", text: str = "U") -> Image.Ima
     # Outer circle
     draw.ellipse([4, 4, 60, 60], fill=color)
 
-    # Inner letter 'U'
+    # Inner letter 'B'
     draw.text((24, 18), text, fill="white")
     return image
 
@@ -83,9 +83,9 @@ class SystemTrayController:
         )
 
         self._icon = pystray.Icon(
-            name="UpstoxBridge",
+            name="BSATradingBridge",
             icon=image,
-            title="Upstox Trading Bridge",
+            title="BSA Trading Bridge",
             menu=menu,
         )
 
@@ -101,15 +101,15 @@ class SystemTrayController:
         mode_lower = mode.lower()
         if "live" in mode_lower or "running" in mode_lower:
             color = "#16a34a"  # Green
-            tooltip = "Upstox Bridge: Live Streaming"
+            tooltip = "BSA Trading Bridge: Live Streaming"
         elif "sim" in mode_lower:
             color = "#f59e0b"  # Amber
-            tooltip = "Upstox Bridge: Simulating Ticks"
+            tooltip = "BSA Trading Bridge: Simulating Ticks"
         else:
             color = "#64748b"  # Slate / Grey
-            tooltip = "Upstox Bridge: Stopped"
+            tooltip = "BSA Trading Bridge: Stopped"
 
-        self._icon.icon = create_tray_icon_image(color=color, text="U")
+        self._icon.icon = create_tray_icon_image(color=color, text="B")
         self._icon.title = tooltip
 
     def _handle_show(self, icon=None, item=None):

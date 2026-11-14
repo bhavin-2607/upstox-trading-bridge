@@ -13,14 +13,20 @@ if [ ! -f "$PYTHON_BIN" ]; then
     PYTHON_BIN="python3"
 fi
 
+export PYINSTALLER_CONFIG_DIR="$(pwd)/.pyinstaller_cache"
+mkdir -p "$PYINSTALLER_CONFIG_DIR"
+
 echo "[*] Using Python: $($PYTHON_BIN --version)"
 echo "[*] Compiling Standalone Executable via PyInstaller..."
 
 $PYTHON_BIN -m PyInstaller upstox_bridge.spec --clean --noconfirm
 
-# Remove intermediate build folder
+# Remove intermediate build and cache folders
 if [ -d "build" ]; then
     rm -rf build
+fi
+if [ -d ".pyinstaller_cache" ]; then
+    rm -rf .pyinstaller_cache
 fi
 
 echo "[*] Copying configuration assets to dist..."
@@ -43,11 +49,11 @@ if [ -d "assets" ]; then
     cp -r "assets" "dist/"
 fi
 
-if [ -f "dist/UpstoxBridge" ]; then
-    chmod +x dist/UpstoxBridge || true
+if [ -f "dist/BSATradingBridge" ]; then
+    chmod +x dist/BSATradingBridge || true
 fi
 
 echo "=================================================================="
-echo "[SUCCESS] Standalone Executable compiled at: dist/UpstoxBridge"
-echo "  Run it in Terminal with: ./dist/UpstoxBridge"
+echo "[SUCCESS] Standalone Executable compiled at: dist/BSATradingBridge"
+echo "  Run it in Terminal with: ./dist/BSATradingBridge"
 echo "=================================================================="

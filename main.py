@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 if sys.platform == "win32":
     try:
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("bhavinamesara.upstoxbridge.desktop.2_0")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("bhavinamesara.bsatradingbridge.desktop.2_0")
     except Exception:
         pass
 

@@ -15,6 +15,7 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+.pyinstaller_cache/
 
 # Excel data files and locks
 data/*.xlsx

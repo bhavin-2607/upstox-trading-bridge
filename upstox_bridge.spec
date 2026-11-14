@@ -95,7 +95,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="UpstoxBridge",
+    name="BSATradingBridge",
     icon=str(icon_file) if icon_file.exists() else None,
     debug=False,
     bootloader_ignore_signals=False,
