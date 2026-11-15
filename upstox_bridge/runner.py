@@ -145,6 +145,7 @@ class BridgeRunner:
                 self.bst_syncer._last_yz_matrix = None
             if self.gsheet_syncer:
                 self.gsheet_syncer._last_sent_yz = None
+                self.gsheet_syncer._last_sent_a = None  # Force immediate refresh to Google Sheets on script change
 
             if self.streamer and self.streamer.is_connected:
                 current_keys = set(self.streamer.subscribed_keys)
@@ -174,6 +175,16 @@ class BridgeRunner:
 
             if self.streamer and self.streamer.is_connected:
                 self.streamer.subscribe(new_keys)
+
+    def on_gsheet_script_deleted(self, row_idx: int) -> None:
+        """Callback when a script row deletion is detected in Google Sheets."""
+        if not self.is_bst_mode or not self.bst_syncer:
+            return
+
+        removed_sym = self.bst_syncer.remove_script_from_external(row_idx)
+        if removed_sym and self.gsheet_syncer:
+            self.gsheet_syncer._last_sent_a = None
+            self.gsheet_syncer._last_sent_yz = None
 
     def reload_from_watchlist_txt(self) -> None:
         """Dynamically reload symbols from watchlist.txt when user edits the file."""
@@ -292,6 +303,7 @@ class BridgeRunner:
                 mode=gsheet_mode,
                 bst_syncer=self.bst_syncer,
                 on_gsheet_scripts_detected=self.on_gsheet_scripts_received,
+                on_gsheet_script_deleted=self.on_gsheet_script_deleted,
             )
             self.gsheet_syncer.start()
 
@@ -402,6 +414,7 @@ class BridgeRunner:
                 sheet_name=self.sheet_name,
                 mode=gsheet_mode,
                 bst_syncer=self.bst_syncer,
+                on_gsheet_script_deleted=self.on_gsheet_script_deleted,
             )
             self.gsheet_syncer.start()
 

@@ -32,6 +32,7 @@ class GoogleSheetWebhookSyncer:
         mode: str = "standard",
         bst_syncer: Optional[Any] = None,
         on_gsheet_scripts_detected: Optional[Callable[[List[Tuple[int, str]]], None]] = None,
+        on_gsheet_script_deleted: Optional[Callable[[int], None]] = None,
     ):
         self.market_store = market_store
         self.webhook_url = webhook_url if webhook_url is not None else settings.gsheet_webhook_url
@@ -40,6 +41,7 @@ class GoogleSheetWebhookSyncer:
         self.mode = mode
         self.bst_syncer = bst_syncer
         self.on_gsheet_scripts_detected = on_gsheet_scripts_detected
+        self.on_gsheet_script_deleted = on_gsheet_script_deleted
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -48,6 +50,8 @@ class GoogleSheetWebhookSyncer:
         self._error_count: int = 0
         self._last_sent_a: Optional[List[List[str]]] = None
         self._last_sent_yz: Optional[List[List[float]]] = None
+        self._known_gsheet_scripts: Dict[int, str] = {}
+        self._max_synced_row: int = 0
 
     def start(self) -> None:
         """Start background sync thread."""
@@ -83,16 +87,18 @@ class GoogleSheetWebhookSyncer:
     def _sync_bst_mode(self) -> bool:
         """In-place slice update to Google Sheets BST sheet."""
         row_map = self.bst_syncer._row_map if self.bst_syncer else {}
-        if not row_map:
+        if not row_map and self._max_synced_row == 0:
             return True
 
-        min_row = min(row_map.keys())
-        max_row = max(row_map.keys())
+        min_row = min(row_map.keys()) if row_map else 3
+        current_max = max(row_map.keys()) if row_map else 3
+        self._max_synced_row = max(self._max_synced_row, current_max)
+        max_row = self._max_synced_row
 
         a_data: List[List[str]] = []
-        cg_data: List[List[float]] = []
-        yz_data: List[List[float]] = []
-        vol_data: List[List[int]] = []
+        cg_data: List[List[Any]] = []
+        yz_data: List[List[Any]] = []
+        vol_data: List[List[Any]] = []
 
         for r in range(min_row, max_row + 1):
             if r in row_map:
@@ -116,10 +122,11 @@ class GoogleSheetWebhookSyncer:
                     yz_data.append([0.0, 0.0])
                     vol_data.append([0])
             else:
+                # Row cleared or deleted: send blank values to clear cells on Google Sheets
                 a_data.append([""])
-                cg_data.append([0.0, 0.0, 0.0, 0.0, 0.0])
-                yz_data.append([0.0, 0.0])
-                vol_data.append([0])
+                cg_data.append(["", "", "", "", ""])
+                yz_data.append(["", ""])
+                vol_data.append([""])
 
         payload: Dict[str, Any] = {
             "mode": "bst",
@@ -134,7 +141,7 @@ class GoogleSheetWebhookSyncer:
             payload["a_data"] = a_data
 
         # Send previous day high/low on first 3 cycles or when data changes
-        if (self._sync_count < 3 or yz_data != self._last_sent_yz) and any(any(v > 0 for v in row) for row in yz_data):
+        if (self._sync_count < 3 or yz_data != self._last_sent_yz) and any(any(isinstance(v, (int, float)) and v > 0 for v in row) for row in yz_data):
             payload["yz_data"] = yz_data
 
         # Request script list from Google Sheet every 3rd cycle (~9s) to reduce Apps Script execution time
@@ -177,14 +184,39 @@ class GoogleSheetWebhookSyncer:
                 self._last_sent_yz = [row[:] for row in payload["yz_data"]]
             logger.debug(f"Google Sheet updated ({count} rows) in {latency_ms:.0f}ms.")
 
+            # Once confirmed written to Google Sheets, trim max_synced_row down to current live rows
+            if self.mode == "bst" and self.bst_syncer:
+                current_max = max(self.bst_syncer._row_map.keys(), default=0)
+                if current_max > 0:
+                    self._max_synced_row = current_max
+
             # Bidirectional sync: Parse scripts returned from Google Sheets
-            if self.mode == "bst" and self.on_gsheet_scripts_detected:
+            if self.mode == "bst":
                 try:
                     res_json = resp.json()
                     scripts_raw = res_json.get("scripts", [])
-                    if scripts_raw:
-                        scripts = [(int(item[0]), str(item[1])) for item in scripts_raw if len(item) >= 2]
-                        self.on_gsheet_scripts_detected(scripts)
+                    current_gsheet: Dict[int, str] = {}
+                    for item in scripts_raw:
+                        if len(item) >= 2:
+                            sym_str = str(item[1]).strip()
+                            if sym_str:
+                                current_gsheet[int(item[0])] = sym_str
+
+                    # 1. Detect scripts deleted from Google Sheets
+                    if self._known_gsheet_scripts and self.on_gsheet_script_deleted:
+                        deleted_rows = [
+                            r for r in self._known_gsheet_scripts
+                            if r not in current_gsheet
+                        ]
+                        for r in deleted_rows:
+                            self.on_gsheet_script_deleted(r)
+
+                    self._known_gsheet_scripts = current_gsheet
+
+                    # 2. Detect scripts added/updated in Google Sheets
+                    if current_gsheet and self.on_gsheet_scripts_detected:
+                        scripts_list = [(r, sym) for r, sym in current_gsheet.items()]
+                        self.on_gsheet_scripts_detected(scripts_list)
                 except Exception as e:
                     logger.debug(f"Could not parse scripts from Google Sheet response: {e}")
 

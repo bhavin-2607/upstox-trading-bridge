@@ -182,6 +182,75 @@ class TestBSTSyncer(unittest.TestCase):
         self.assertFalse(dup_success)
         self.assertIn("already tracked", dup_msg)
 
+    def test_inject_and_remove_from_external(self):
+        """Test inject_scripts_from_external and remove_script_from_external queue writes safely."""
+        syncer = BSTSyncer(
+            market_store=self.store,
+            file_path=self.test_excel,
+            sheet_name="BST",
+        )
+        syncer.scan_scripts()
+
+        # Inject new script from Google Sheets
+        new_row = 240
+        new_keys = syncer.inject_scripts_from_external([(new_row, "TATAPOWER")])
+        self.assertEqual(len(new_keys), 1)
+        self.assertIn(new_row, syncer._row_map)
+        self.assertEqual(syncer._row_map[new_row][1], "TATAPOWER")
+
+        # Verify queued write
+        self.assertFalse(syncer._pending_cell_writes.empty())
+        item = syncer._pending_cell_writes.get_nowait()
+        self.assertEqual(item, (new_row, syncer.COL_SCRIPT, "TATAPOWER"))
+
+        # Process pending writes
+        syncer._pending_cell_writes.put(item)
+        syncer._process_pending_writes()
+
+        # Check excel file updated
+        wb = openpyxl.load_workbook(self.test_excel, data_only=True)
+        ws = wb["BST"]
+        self.assertEqual(ws.cell(new_row, 1).value, "TATAPOWER")
+        wb.close()
+
+        # Now test removal from Google Sheets
+        removed = syncer.remove_script_from_external(new_row)
+        self.assertEqual(removed, "TATAPOWER")
+        self.assertNotIn(new_row, syncer._row_map)
+
+        # Process clearing write
+        syncer._process_pending_writes()
+        wb = openpyxl.load_workbook(self.test_excel, data_only=True)
+        ws = wb["BST"]
+        self.assertIn(ws.cell(new_row, 1).value, (None, ""))
+        wb.close()
+
+    def test_deletion_resurrection_protection(self):
+        """Verify that rows deleted from Excel are not resurrected by incoming Google Sheet scripts."""
+        syncer = BSTSyncer(
+            market_store=self.store,
+            file_path=self.test_excel,
+            sheet_name="BST",
+        )
+        syncer.scan_scripts()
+
+        # Simulate user clearing row 3 (NIFTY 50) in Excel
+        wb = openpyxl.load_workbook(self.test_excel, data_only=False)
+        ws = wb["BST"]
+        ws.cell(3, 1, "")
+        wb.save(self.test_excel)
+        wb.close()
+
+        # Scan detects deletion
+        syncer.scan_scripts()
+        self.assertNotIn(3, syncer._row_map)
+        self.assertIn(3, syncer._deleted_rows_excel)
+
+        # Incoming Google Sheet sync arrives with old row 3
+        new_keys = syncer.inject_scripts_from_external([(3, "INDEXNSE:NIFTY_50")])
+        self.assertEqual(new_keys, [])
+        self.assertNotIn(3, syncer._row_map)  # Protected against resurrection!
+
 
 if __name__ == "__main__":
     unittest.main()

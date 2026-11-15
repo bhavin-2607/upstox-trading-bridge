@@ -96,6 +96,39 @@ class TestGoogleSheetWebhookSyncer(unittest.TestCase):
         self.assertEqual(received_scripts[1], (4, "NSE:TCS"))
 
     @patch("requests.post")
+    def test_sync_bst_mode_deletion_detected(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "status": "success",
+            "mode": "bst",
+            "scripts": [[3, "INDEXNSE:NIFTY_50"]],  # row 4 was deleted!
+        }
+        mock_post.return_value = mock_resp
+
+        mock_bst = MagicMock()
+        mock_bst._row_map = {3: ("NSE_INDEX|Nifty 50", "NIFTY 50")}
+
+        deleted_rows = []
+        def on_delete(row_idx):
+            deleted_rows.append(row_idx)
+
+        bst_gsyncer = GoogleSheetWebhookSyncer(
+            market_store=self.store,
+            webhook_url="https://script.google.com/macros/s/TEST/exec",
+            sheet_name="BST",
+            mode="bst",
+            bst_syncer=mock_bst,
+            on_gsheet_script_deleted=on_delete,
+        )
+        # Seed known scripts
+        bst_gsyncer._known_gsheet_scripts = {3: "INDEXNSE:NIFTY_50", 4: "NSE:TCS"}
+
+        bst_gsyncer.sync_once()
+        self.assertEqual(deleted_rows, [4])
+        self.assertNotIn(4, bst_gsyncer._known_gsheet_scripts)
+
+    @patch("requests.post")
     def test_connection_safe_ping(self, mock_post):
         """Verify test_connection sends non-destructive ping without writing fake data."""
         mock_resp = MagicMock()

@@ -71,6 +71,9 @@ class BSTSyncer:
         self.last_sync_time: float = 0.0
         self.last_error: str = ""
         self._pending_appends: queue.Queue = queue.Queue()
+        self._pending_cell_writes: queue.Queue = queue.Queue()
+        self._deleted_rows_excel: Dict[int, float] = {}  # row_idx -> deletion timestamp
+        self._max_seen_row: int = 0
 
         self._use_xlwings = False
         self._xw_book = None
@@ -184,11 +187,18 @@ class BSTSyncer:
                 changed = True
                 del self._row_map[old_row]
                 self._known_scripts_raw.pop(old_row, None)
+                self._deleted_rows_excel[old_row] = time.time()
+                # Clear price columns in Excel so old numbers don't persist
+                if self._use_xlwings and self._xw_sheet:
+                    try:
+                        self._xw_sheet.range(f"C{old_row}:G{old_row}").value = [["", "", "", "", ""]]
+                    except Exception:
+                        pass
 
         if changed:
             self._last_yz_matrix = None
 
-        if changed and new_keys and self.on_scripts_detected:
+        if changed and self.on_scripts_detected:
             all_keys = [k for k, _ in self._row_map.values()]
             self.on_scripts_detected(all_keys)
 
@@ -201,11 +211,19 @@ class BSTSyncer:
         """
         new_keys: List[str] = []
         excel_updates: List[Tuple[int, str]] = []
+        now = time.time()
 
         for row_idx, raw_val in external_scripts:
             cleaned_val = str(raw_val).strip()
             if not cleaned_val:
                 continue
+
+            # Protect against resurrecting rows recently deleted from Excel (within last 45s)
+            if row_idx in self._deleted_rows_excel:
+                if now - self._deleted_rows_excel[row_idx] < 45.0:
+                    continue
+                else:
+                    del self._deleted_rows_excel[row_idx]
 
             if self._known_scripts_raw.get(row_idx) != cleaned_val:
                 self._known_scripts_raw[row_idx] = cleaned_val
@@ -218,26 +236,37 @@ class BSTSyncer:
 
         if excel_updates:
             self._last_yz_matrix = None
-            logger.info(f"Writing {len(excel_updates)} new/updated scripts from Google Sheets into local Excel...")
-            if self._use_xlwings and self._xw_sheet:
-                try:
-                    for r, val in excel_updates:
-                        self._xw_sheet.range(f"A{r}").value = val
-                except Exception as e:
-                    logger.debug(f"xlwings external inject error: {e}")
-            else:
-                try:
-                    wb = openpyxl.load_workbook(self.file_path, data_only=False)
-                    if self.sheet_name in wb.sheetnames:
-                        ws = wb[self.sheet_name]
-                        for r, val in excel_updates:
-                            ws.cell(r, self.COL_SCRIPT, val)
-                        wb.save(self.file_path)
-                    wb.close()
-                except Exception as e:
-                    logger.debug(f"openpyxl external inject error: {e}")
+            logger.info(f"Queueing {len(excel_updates)} new/updated script(s) from Google Sheets to Excel: {[s for _, s in excel_updates]}")
+            for r, val in excel_updates:
+                self._pending_cell_writes.put((r, self.COL_SCRIPT, val))
 
         return new_keys
+
+    def remove_script_from_external(self, row_idx: int) -> Optional[str]:
+        """
+        Handle a script deletion initiated from Google Sheets.
+        Removes the script from local tracking and queues clearing in Excel.
+        """
+        sym = None
+        if row_idx in self._row_map:
+            key, sym = self._row_map.pop(row_idx)
+            self._known_scripts_raw.pop(row_idx, None)
+            self._last_yz_matrix = None
+            self._deleted_rows_excel[row_idx] = time.time()
+
+            # Queue cell clearing on dedicated COM thread
+            self._pending_cell_writes.put((row_idx, self.COL_SCRIPT, ""))
+            self._pending_cell_writes.put((row_idx, "CLEAR_PRICES", None))
+            logger.info(f"[Google Sheets -> Excel] Deleted script '{sym}' at row {row_idx}.")
+
+            if self.on_scripts_detected:
+                try:
+                    all_keys = [k for k, _ in self._row_map.values()]
+                    self.on_scripts_detected(all_keys)
+                except Exception as e:
+                    logger.debug(f"Error notifying script deletion: {e}")
+
+        return sym
 
     def append_script(self, raw_symbol: str) -> Tuple[bool, str, int]:
         """
@@ -373,6 +402,54 @@ class BSTSyncer:
 
             evt.set()
 
+    def _process_pending_writes(self) -> None:
+        """Process queued cell updates and dynamic appends on BSTSyncer's dedicated COM thread."""
+        self._process_pending_appends()
+
+        if self._pending_cell_writes.empty():
+            return
+
+        items = []
+        while not self._pending_cell_writes.empty():
+            try:
+                items.append(self._pending_cell_writes.get_nowait())
+            except Exception:
+                break
+
+        if not items:
+            return
+
+        unwritten = []
+        if self._use_xlwings and self._xw_sheet:
+            for r, col, val in items:
+                try:
+                    if col == "CLEAR_PRICES":
+                        self._xw_sheet.range(f"C{r}:G{r}").value = [["", "", "", "", ""]]
+                    else:
+                        self._xw_sheet.range(f"A{r}").value = val
+                except Exception as e:
+                    logger.debug(f"xlwings pending cell write error at row {r}: {e}")
+                    unwritten.append((r, col, val))
+        elif self.file_path.exists():
+            try:
+                wb = openpyxl.load_workbook(self.file_path, data_only=False)
+                if self.sheet_name in wb.sheetnames:
+                    ws = wb[self.sheet_name]
+                    for r, col, val in items:
+                        if col == "CLEAR_PRICES":
+                            for c in range(3, 8):
+                                ws.cell(r, c, "")
+                        else:
+                            ws.cell(r, col, val)
+                    wb.save(self.file_path)
+                wb.close()
+            except Exception as e:
+                logger.debug(f"openpyxl pending cell write error: {e}")
+                unwritten.extend(items)
+
+        for item in unwritten:
+            self._pending_cell_writes.put(item)
+
     def _sync_cycle_xlwings(self) -> None:
         """High-speed batch slice update in active Excel via xlwings."""
         if not self._row_map or not self._xw_sheet:
@@ -415,8 +492,8 @@ class BSTSyncer:
                     block_af.append([0])
                     block_yz.append([None, None])
             else:
-                block_cg.append([None, None, None, None, None])
-                block_af.append([None])
+                block_cg.append(["", "", "", "", ""])
+                block_af.append([""])
                 block_yz.append([None, None])
 
         try:
@@ -426,7 +503,17 @@ class BSTSyncer:
             # 2. Update live volume block AF (1 column)
             self._xw_sheet.range(f"AF{min_row}:AF{max_row}").value = block_af
 
-            # 3. Update previous day high/low block Y:Z (written when values arrive or change)
+            # 3. Clean up any tail rows that were deleted
+            if self._max_seen_row > max_row:
+                try:
+                    self._xw_sheet.range(f"A{max_row + 1}:G{self._max_seen_row}").value = ""
+                    self._max_seen_row = max_row
+                except Exception:
+                    pass
+            else:
+                self._max_seen_row = max(self._max_seen_row, max_row)
+
+            # 4. Update previous day high/low block Y:Z (written when values arrive or change)
             if block_yz != self._last_yz_matrix and any(any(v is not None and v > 0 for v in row) for row in block_yz):
                 self._xw_sheet.range(f"Y{min_row}:Z{max_row}").value = block_yz
                 self._last_yz_matrix = [row[:] for row in block_yz]
@@ -507,8 +594,8 @@ class BSTSyncer:
 
     def sync_once(self) -> None:
         """Execute a single sync iteration."""
-        # Process queued dynamic appends on BSTSyncer's dedicated COM thread
-        self._process_pending_appends()
+        # Process queued dynamic writes and appends on BSTSyncer's dedicated COM thread
+        self._process_pending_writes()
 
         # Periodically scan Column A for changes in scripts
         now = time.time()
