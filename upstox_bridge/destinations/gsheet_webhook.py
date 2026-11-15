@@ -87,13 +87,15 @@ class GoogleSheetWebhookSyncer:
     def _sync_bst_mode(self) -> bool:
         """In-place slice update to Google Sheets BST sheet."""
         row_map = self.bst_syncer._row_map if self.bst_syncer else {}
-        if not row_map and self._max_synced_row == 0:
+        if not row_map:
             return True
 
-        min_row = min(row_map.keys()) if row_map else 3
-        current_max = max(row_map.keys()) if row_map else 3
-        self._max_synced_row = max(self._max_synced_row, current_max)
-        max_row = self._max_synced_row
+        min_row = min(row_map.keys())
+        max_row = max(row_map.keys())
+        # If any rows were recently deleted from Excel, ensure max_row covers them so Google Sheet clears them
+        deleted_tail = [r for r in getattr(self.bst_syncer, "_deleted_rows_excel", {}) if r > max_row]
+        if deleted_tail:
+            max_row = max(max_row, max(deleted_tail))
 
         a_data: List[List[str]] = []
         cg_data: List[List[Any]] = []
@@ -184,17 +186,14 @@ class GoogleSheetWebhookSyncer:
                 self._last_sent_yz = [row[:] for row in payload["yz_data"]]
             logger.debug(f"Google Sheet updated ({count} rows) in {latency_ms:.0f}ms.")
 
-            # Once confirmed written to Google Sheets, trim max_synced_row down to current live rows
-            if self.mode == "bst" and self.bst_syncer:
-                current_max = max(self.bst_syncer._row_map.keys(), default=0)
-                if current_max > 0:
-                    self._max_synced_row = current_max
-
-            # Bidirectional sync: Parse scripts returned from Google Sheets
-            if self.mode == "bst":
+            # Bidirectional sync: Parse scripts returned from Google Sheets ONLY when explicitly requested
+            if self.mode == "bst" and payload.get("sync_scripts"):
                 try:
                     res_json = resp.json()
-                    scripts_raw = res_json.get("scripts", [])
+                    scripts_raw = res_json.get("scripts")
+                    if scripts_raw is None:
+                        return True
+
                     current_gsheet: Dict[int, str] = {}
                     for item in scripts_raw:
                         if len(item) >= 2:
@@ -202,18 +201,27 @@ class GoogleSheetWebhookSyncer:
                             if sym_str:
                                 current_gsheet[int(item[0])] = sym_str
 
-                    # 1. Detect scripts deleted from Google Sheets
-                    if self._known_gsheet_scripts and self.on_gsheet_script_deleted:
+                    # MASS DELETION SAFETY GUARD:
+                    # If current_gsheet is empty or drops many rows at once, ignore to protect local Excel workbook!
+                    if self._known_gsheet_scripts and current_gsheet:
                         deleted_rows = [
                             r for r in self._known_gsheet_scripts
                             if r not in current_gsheet
                         ]
-                        for r in deleted_rows:
-                            self.on_gsheet_script_deleted(r)
+                        # Only permit sensible user deletions (up to 3 rows at a time)
+                        if 0 < len(deleted_rows) <= 3 and self.on_gsheet_script_deleted:
+                            for r in deleted_rows:
+                                self.on_gsheet_script_deleted(r)
+                        elif len(deleted_rows) > 3:
+                            logger.warning(
+                                f"Mass deletion rejected ({len(deleted_rows)} rows missing from Google Sheet). "
+                                f"Protecting local Excel workbook."
+                            )
 
-                    self._known_gsheet_scripts = current_gsheet
+                    if current_gsheet:
+                        self._known_gsheet_scripts = current_gsheet
 
-                    # 2. Detect scripts added/updated in Google Sheets
+                    # Detect scripts added/updated in Google Sheets
                     if current_gsheet and self.on_gsheet_scripts_detected:
                         scripts_list = [(r, sym) for r, sym in current_gsheet.items()]
                         self.on_gsheet_scripts_detected(scripts_list)

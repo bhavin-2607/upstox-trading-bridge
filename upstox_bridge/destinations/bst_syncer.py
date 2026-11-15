@@ -73,7 +73,6 @@ class BSTSyncer:
         self._pending_appends: queue.Queue = queue.Queue()
         self._pending_cell_writes: queue.Queue = queue.Queue()
         self._deleted_rows_excel: Dict[int, float] = {}  # row_idx -> deletion timestamp
-        self._max_seen_row: int = 0
 
         self._use_xlwings = False
         self._xw_book = None
@@ -503,17 +502,7 @@ class BSTSyncer:
             # 2. Update live volume block AF (1 column)
             self._xw_sheet.range(f"AF{min_row}:AF{max_row}").value = block_af
 
-            # 3. Clean up any tail rows that were deleted
-            if self._max_seen_row > max_row:
-                try:
-                    self._xw_sheet.range(f"A{max_row + 1}:G{self._max_seen_row}").value = ""
-                    self._max_seen_row = max_row
-                except Exception:
-                    pass
-            else:
-                self._max_seen_row = max(self._max_seen_row, max_row)
-
-            # 4. Update previous day high/low block Y:Z (written when values arrive or change)
+            # 3. Update previous day high/low block Y:Z (written when values arrive or change)
             if block_yz != self._last_yz_matrix and any(any(v is not None and v > 0 for v in row) for row in block_yz):
                 self._xw_sheet.range(f"Y{min_row}:Z{max_row}").value = block_yz
                 self._last_yz_matrix = [row[:] for row in block_yz]

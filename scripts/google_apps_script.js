@@ -131,9 +131,10 @@ function doPost(e) {
         sheet.getRange(startRow, 32, volData.length, 1).setValues(volData);
       }
 
-      // 5. Read current scripts from Column A for Bidirectional Sync (if requested)
-      var currentScripts = [];
+      // 5. Read current scripts from Column A for Bidirectional Sync (ONLY when explicitly requested)
+      var currentScripts = null;
       if (payload.sync_scripts) {
+        currentScripts = [];
         var lastRow = sheet.getLastRow();
         if (lastRow >= startRow) {
           var colAVals = sheet.getRange(startRow, 1, lastRow - startRow + 1, 1).getValues();
@@ -146,14 +147,18 @@ function doPost(e) {
         }
       }
 
-      return ContentService.createTextOutput(JSON.stringify({
+      var bstResp = {
         status: "success",
         mode: "bst",
         sheet: targetSheetName,
         rows_updated: updatedRows,
-        scripts: currentScripts,
         timestamp: new Date().toISOString()
-      })).setMimeType(ContentService.MimeType.JSON);
+      };
+      if (currentScripts !== null) {
+        bstResp.scripts = currentScripts;
+      }
+
+      return ContentService.createTextOutput(JSON.stringify(bstResp)).setMimeType(ContentService.MimeType.JSON);
     }
 
     // ========================================================================
