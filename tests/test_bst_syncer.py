@@ -261,18 +261,45 @@ class TestBSTSyncer(unittest.TestCase):
         self.assertEqual(BSTSyncer._sanitize_cell("#N/A"), "")
         self.assertEqual(BSTSyncer._sanitize_cell(-2146826288), "")  # COM error code
 
-        # Test matrix extraction from openpyxl fallback
+        # Test matrix extraction from openpyxl fallback (default start_col=2 for Cols B to AW)
         syncer = BSTSyncer(
             market_store=self.store,
             file_path=self.test_excel,
             sheet_name="BST",
         )
         syncer.scan_scripts()
-        matrix = syncer.get_evaluated_matrix(min_row=3, max_row=5, max_col=49)
+        matrix = syncer.get_evaluated_matrix(min_row=3, max_row=5, start_col=2, max_col=49)
         self.assertIsNotNone(matrix)
         self.assertEqual(len(matrix), 3)
-        self.assertEqual(len(matrix[0]), 49)
-        self.assertEqual(matrix[0][0], "NIFTY 50")
+        self.assertEqual(len(matrix[0]), 48)  # Columns 2 to 49
+
+        # When start_col=1, includes Column A
+        full_matrix = syncer.get_evaluated_matrix(min_row=3, max_row=5, start_col=1, max_col=49)
+        self.assertEqual(len(full_matrix[0]), 49)
+        self.assertEqual(full_matrix[0][0], "NIFTY 50")
+
+    def test_gsheet_delete_and_readd_same_row(self):
+        """Verify that a script deleted from Google Sheet can be immediately re-added on the same row."""
+        syncer = BSTSyncer(
+            market_store=self.store,
+            file_path=self.test_excel,
+            sheet_name="BST",
+        )
+        syncer.scan_scripts()
+        test_row = 15
+
+        # 1. Delete script from Google Sheet
+        old_sym = syncer.remove_script_from_external(test_row)
+        self.assertIsNotNone(old_sym)
+        self.assertNotIn(test_row, syncer._row_map)
+        # Verify it was NOT added to _deleted_rows_excel (so future GSheet additions are not blocked)
+        self.assertNotIn(test_row, syncer._deleted_rows_excel)
+
+        # 2. Re-add script to the same row from Google Sheet
+        new_keys = syncer.inject_scripts_from_external([(test_row, "SBIN")])
+        self.assertEqual(len(new_keys), 1)
+        self.assertIn(test_row, syncer._row_map)
+        self.assertEqual(syncer._row_map[test_row][1], "SBIN")
 
 
 if __name__ == "__main__":

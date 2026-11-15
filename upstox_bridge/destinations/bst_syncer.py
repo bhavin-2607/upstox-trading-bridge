@@ -73,7 +73,7 @@ class BSTSyncer:
         self.last_error: str = ""
         self._pending_appends: queue.Queue = queue.Queue()
         self._pending_cell_writes: queue.Queue = queue.Queue()
-        self._deleted_rows_excel: Dict[int, float] = {}  # row_idx -> deletion timestamp
+        self._deleted_rows_excel: Dict[int, Tuple[float, str]] = {}  # row_idx -> (deletion_timestamp, uppercase_symbol)
 
         self._use_xlwings = False
         self._xw_book = None
@@ -186,9 +186,9 @@ class BSTSyncer:
         for old_row in list(self._row_map.keys()):
             if old_row not in discovered_rows:
                 changed = True
-                del self._row_map[old_row]
+                _, deleted_sym = self._row_map.pop(old_row)
                 self._known_scripts_raw.pop(old_row, None)
-                self._deleted_rows_excel[old_row] = time.time()
+                self._deleted_rows_excel[old_row] = (time.time(), str(deleted_sym).upper())
                 # Clear price columns in Excel so old numbers don't persist
                 if self._use_xlwings and self._xw_sheet:
                     try:
@@ -219,12 +219,14 @@ class BSTSyncer:
             if not cleaned_val:
                 continue
 
-            # Protect against resurrecting rows recently deleted from Excel (within last 45s)
+            # Protect against resurrecting the SAME script recently deleted in Excel (within 45s)
             if row_idx in self._deleted_rows_excel:
-                if now - self._deleted_rows_excel[row_idx] < 45.0:
-                    continue
-                else:
-                    del self._deleted_rows_excel[row_idx]
+                del_time, del_sym = self._deleted_rows_excel[row_idx]
+                if now - del_time < 45.0:
+                    clean_cand = self.instrument_master.clean_script_symbol(cleaned_val)
+                    if clean_cand.upper() == del_sym:
+                        continue
+                del self._deleted_rows_excel[row_idx]
 
             if self._known_scripts_raw.get(row_idx) != cleaned_val:
                 self._known_scripts_raw[row_idx] = cleaned_val
@@ -253,7 +255,6 @@ class BSTSyncer:
             key, sym = self._row_map.pop(row_idx)
             self._known_scripts_raw.pop(row_idx, None)
             self._last_yz_matrix = None
-            self._deleted_rows_excel[row_idx] = time.time()
 
             # Queue cell clearing on dedicated COM thread
             self._pending_cell_writes.put((row_idx, self.COL_SCRIPT, ""))
@@ -379,10 +380,12 @@ class BSTSyncer:
         self,
         min_row: Optional[int] = None,
         max_row: Optional[int] = None,
+        start_col: int = 2,
         max_col: int = 49,
     ) -> Optional[List[List[Any]]]:
         """
         Extract the full evaluated grid (values-only, zero formulas) from Excel.
+        By default reads Columns 2 to 49 (Columns B to AW), leaving Column A (Script names) untouched.
         Used for Option 1 formula masking when pushing live data to Google Sheets.
         """
         if not self._row_map:
@@ -396,7 +399,7 @@ class BSTSyncer:
         # 1. Try reading from active xlwings sheet (instant COM block read)
         if self._xw_sheet:
             try:
-                raw = self._xw_sheet.range((start_r, 1), (end_r, max_col)).value
+                raw = self._xw_sheet.range((start_r, start_col), (end_r, max_col)).value
                 if start_r == end_r:
                     raw = [raw]
                 cleaned: List[List[Any]] = []
@@ -424,7 +427,7 @@ class BSTSyncer:
                 cleaned = []
                 for r in range(start_r, end_r + 1):
                     row_vals = []
-                    for c in range(1, max_col + 1):
+                    for c in range(start_col, max_col + 1):
                         row_vals.append(self._sanitize_cell(ws.cell(r, c).value))
                     cleaned.append(row_vals)
                 wb.close()

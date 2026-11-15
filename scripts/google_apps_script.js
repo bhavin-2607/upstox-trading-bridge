@@ -102,18 +102,12 @@ function doPost(e) {
     // ========================================================================
     if (payload.mode === "bst_matrix") {
       var startRow = payload.start_row || 3;
+      var startCol = payload.start_col || 2;
       var matrix = payload.matrix;
+      var aData = payload.a_data;
       var updatedRows = 0;
 
-      // 1. In-place update full evaluated matrix (all columns A to AW) as pure values
-      if (matrix && matrix.length > 0) {
-        var numRows = matrix.length;
-        var numCols = matrix[0].length;
-        sheet.getRange(startRow, 1, numRows, numCols).setValues(matrix);
-        updatedRows = numRows;
-      }
-
-      // 2. Read current scripts from Column A for Bidirectional Sync (ONLY when explicitly requested)
+      // 1. Read current scripts from Column A FIRST (before any updates so user-typed scripts are never lost)
       var currentScripts = null;
       if (payload.sync_scripts) {
         currentScripts = [];
@@ -127,6 +121,19 @@ function doPost(e) {
             }
           }
         }
+      }
+
+      // 2. In-place update script names in Col A (ONLY when explicitly provided by Excel change)
+      if (aData && aData.length > 0) {
+        sheet.getRange(startRow, 1, aData.length, 1).setValues(aData);
+      }
+
+      // 3. In-place update evaluated matrix in Columns B to AW (startCol = 2, leaving Col A untouched)
+      if (matrix && matrix.length > 0) {
+        var numRows = matrix.length;
+        var numCols = matrix[0].length;
+        sheet.getRange(startRow, startCol, numRows, numCols).setValues(matrix);
+        updatedRows = numRows;
       }
 
       var matrixResp = {

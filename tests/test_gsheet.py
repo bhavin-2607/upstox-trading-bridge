@@ -76,7 +76,7 @@ class TestGoogleSheetWebhookSyncer(unittest.TestCase):
         mock_bst = MagicMock()
         mock_bst._row_map = {3: ("NSE_INDEX|Nifty 50", "NIFTY 50")}
         mock_bst.get_evaluated_matrix.return_value = [
-            ["NIFTY 50", "UP", 24150.0, 24000.0, 24200.0, 23950.0, 24000.0, 25.5, 24100.0, "BUY", "BUY"]
+            ["UP", 24150.0, 24000.0, 24200.0, 23950.0, 24000.0, 25.5, 24100.0, "BUY", "BUY"]
         ]
 
         bst_gsyncer = GoogleSheetWebhookSyncer(
@@ -96,10 +96,10 @@ class TestGoogleSheetWebhookSyncer(unittest.TestCase):
         self.assertEqual(payload["mode"], "bst_matrix")
         self.assertEqual(payload["sheet_name"], "BST")
         self.assertEqual(payload["start_row"], 3)
+        self.assertEqual(payload["start_col"], 2)  # Columns B to AW, protecting Column A!
         self.assertIn("matrix", payload)
-        self.assertEqual(payload["matrix"][0][0], "NIFTY 50")
-        self.assertEqual(payload["matrix"][0][1], "UP")
-        self.assertEqual(payload["matrix"][0][9], "BUY")
+        self.assertEqual(payload["matrix"][0][0], "UP")
+        self.assertEqual(payload["a_data"][0][0], "NIFTY 50")
 
     @patch("requests.post")
     def test_sync_bst_mode_bidirectional(self, mock_post):

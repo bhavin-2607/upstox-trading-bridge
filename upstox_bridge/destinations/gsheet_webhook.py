@@ -99,30 +99,41 @@ class GoogleSheetWebhookSyncer:
         if deleted_tail:
             max_row = max(max_row, max(deleted_tail))
 
+        a_data: List[List[str]] = []
+        for r in range(min_row, max_row + 1):
+            if r in row_map:
+                _, clean_sym = row_map[r]
+                a_data.append([clean_sym])
+            else:
+                a_data.append([""])
+
         # Option 1: Values-Only Full Matrix Mode (Formula Masking for Public Viewers)
         if self.publish_mode == "values" and self.bst_syncer and hasattr(self.bst_syncer, "get_evaluated_matrix"):
-            matrix = self.bst_syncer.get_evaluated_matrix(min_row=min_row, max_row=max_row, max_col=49)
+            matrix = self.bst_syncer.get_evaluated_matrix(min_row=min_row, max_row=max_row, start_col=2, max_col=49)
             if matrix:
                 payload: Dict[str, Any] = {
                     "mode": "bst_matrix",
                     "sheet_name": self.sheet_name,
                     "start_row": min_row,
+                    "start_col": 2,
                     "matrix": matrix,
                 }
+                # Send Column A only on initial cycles, periodic refresh, or when Excel Column A list changes
+                if self._sync_count < 3 or (self._sync_count % 30 == 0) or a_data != self._last_sent_a:
+                    payload["a_data"] = a_data
+
                 if self._sync_count % 3 == 0:
                     payload["sync_scripts"] = True
 
                 return self._send_payload(payload, len(matrix))
 
-        a_data: List[List[str]] = []
         cg_data: List[List[Any]] = []
         yz_data: List[List[Any]] = []
         vol_data: List[List[Any]] = []
 
         for r in range(min_row, max_row + 1):
             if r in row_map:
-                key, clean_sym = row_map[r]
-                a_data.append([clean_sym])
+                key, _ = row_map[r]
                 item = self.market_store.get_quote_item(key)
                 if item:
                     ltp = round(item.ltp, 2) if item.ltp else 0.0
