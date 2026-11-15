@@ -278,11 +278,12 @@ def cmd_test_gsheet(args):
 
 
 def cmd_restore_gsheet(args):
-    """Restore BST headers, scripts, and formulas to Google Sheets."""
+    """Restore BST headers, scripts, and layout to Google Sheets (Values-only or Formulas)."""
     file_path = getattr(args, "file", None) or "trial.xlsx"
     sheet_name = getattr(args, "sheet", None) or "BST"
-    print(f"Restoring BST template to Google Sheets '{sheet_name}' from '{file_path}'...")
-    syncer = GoogleSheetWebhookSyncer(MarketStore(), sheet_name=sheet_name)
+    mode = getattr(args, "mode", None) or getattr(settings, "gsheet_publish_mode", "values") or "values"
+    print(f"Restoring BST template to Google Sheets '{sheet_name}' from '{file_path}' (Mode: {mode})...")
+    syncer = GoogleSheetWebhookSyncer(MarketStore(), sheet_name=sheet_name, publish_mode=mode)
     result = syncer.restore_bst_template(excel_path=file_path)
     if result.get("success"):
         print(f"\nSUCCESS! {result.get('message')}")
@@ -345,9 +346,10 @@ def main():
     subparsers.add_parser("test-gsheet", help="Test connection to Google Sheets Webhook")
 
     # Restore GSheet BST
-    p_restore = subparsers.add_parser("restore-gsheet", help="Restore BST headers, scripts, and formulas to Google Sheet")
+    p_restore = subparsers.add_parser("restore-gsheet", help="Restore BST headers and scripts to Google Sheet")
     p_restore.add_argument("--file", help="Path to Excel template (default: trial.xlsx)")
     p_restore.add_argument("--sheet", help="Target worksheet name (default: BST)")
+    p_restore.add_argument("--mode", choices=["values", "formulas"], default="values", help="Publish mode: 'values' (hide formulas) or 'formulas' (legacy)")
 
     # Test Excel
     subparsers.add_parser("test-excel", help="Test writing to local Excel workbook")

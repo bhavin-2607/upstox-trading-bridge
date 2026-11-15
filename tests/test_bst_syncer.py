@@ -251,6 +251,29 @@ class TestBSTSyncer(unittest.TestCase):
         self.assertEqual(new_keys, [])
         self.assertNotIn(3, syncer._row_map)  # Protected against resurrection!
 
+    def test_sanitize_cell_and_get_evaluated_matrix(self):
+        """Test cell sanitization and evaluated matrix extraction."""
+        # Sanitization tests
+        self.assertEqual(BSTSyncer._sanitize_cell(None), "")
+        self.assertEqual(BSTSyncer._sanitize_cell(25216.0), 25216.0)
+        self.assertEqual(BSTSyncer._sanitize_cell("BUY"), "BUY")
+        self.assertEqual(BSTSyncer._sanitize_cell("#DIV/0!"), "")
+        self.assertEqual(BSTSyncer._sanitize_cell("#N/A"), "")
+        self.assertEqual(BSTSyncer._sanitize_cell(-2146826288), "")  # COM error code
+
+        # Test matrix extraction from openpyxl fallback
+        syncer = BSTSyncer(
+            market_store=self.store,
+            file_path=self.test_excel,
+            sheet_name="BST",
+        )
+        syncer.scan_scripts()
+        matrix = syncer.get_evaluated_matrix(min_row=3, max_row=5, max_col=49)
+        self.assertIsNotNone(matrix)
+        self.assertEqual(len(matrix), 3)
+        self.assertEqual(len(matrix[0]), 49)
+        self.assertEqual(matrix[0][0], "NIFTY 50")
+
 
 if __name__ == "__main__":
     unittest.main()

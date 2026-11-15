@@ -100,6 +100,49 @@ function doPost(e) {
     // ========================================================================
     // MODE 2: BST Custom Trading Sheet In-Place Updates (Zero Formula Damage)
     // ========================================================================
+    if (payload.mode === "bst_matrix") {
+      var startRow = payload.start_row || 3;
+      var matrix = payload.matrix;
+      var updatedRows = 0;
+
+      // 1. In-place update full evaluated matrix (all columns A to AW) as pure values
+      if (matrix && matrix.length > 0) {
+        var numRows = matrix.length;
+        var numCols = matrix[0].length;
+        sheet.getRange(startRow, 1, numRows, numCols).setValues(matrix);
+        updatedRows = numRows;
+      }
+
+      // 2. Read current scripts from Column A for Bidirectional Sync (ONLY when explicitly requested)
+      var currentScripts = null;
+      if (payload.sync_scripts) {
+        currentScripts = [];
+        var lastRow = sheet.getLastRow();
+        if (lastRow >= startRow) {
+          var colAVals = sheet.getRange(startRow, 1, lastRow - startRow + 1, 1).getValues();
+          for (var i = 0; i < colAVals.length; i++) {
+            var val = colAVals[i][0];
+            if (val !== null && val !== undefined && String(val).trim() !== "") {
+              currentScripts.push([startRow + i, String(val).trim()]);
+            }
+          }
+        }
+      }
+
+      var matrixResp = {
+        status: "success",
+        mode: "bst_matrix",
+        sheet: targetSheetName,
+        rows_updated: updatedRows,
+        timestamp: new Date().toISOString()
+      };
+      if (currentScripts !== null) {
+        matrixResp.scripts = currentScripts;
+      }
+
+      return ContentService.createTextOutput(JSON.stringify(matrixResp)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (payload.mode === "bst") {
       var startRow = payload.start_row || 3;
       var aData = payload.a_data;     // Col A: [SCRIPT] clean normal symbols (optional)

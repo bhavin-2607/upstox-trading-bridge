@@ -302,6 +302,7 @@ class BridgeRunner:
                 sheet_name=self.sheet_name,
                 mode=gsheet_mode,
                 bst_syncer=self.bst_syncer,
+                publish_mode=settings.gsheet_publish_mode,
                 on_gsheet_scripts_detected=self.on_gsheet_scripts_received,
                 on_gsheet_script_deleted=self.on_gsheet_script_deleted,
             )
@@ -414,6 +415,7 @@ class BridgeRunner:
                 sheet_name=self.sheet_name,
                 mode=gsheet_mode,
                 bst_syncer=self.bst_syncer,
+                publish_mode=settings.gsheet_publish_mode,
                 on_gsheet_script_deleted=self.on_gsheet_script_deleted,
             )
             self.gsheet_syncer.start()

@@ -255,11 +255,11 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         test_btn.pack(side="right")
 
         restore_row = ctk.CTkFrame(gsheet_frame, fg_color="transparent")
-        restore_row.pack(fill="x", padx=12, pady=(0, 10))
+        restore_row.pack(fill="x", padx=12, pady=(0, 6))
 
         restore_btn = ctk.CTkButton(
             restore_row,
-            text=" Restore BST Template & Formulas to Google Sheet",
+            text=" Restore BST Template to Google Sheet",
             image=IconManager.get_icon("save", size=(13, 13)),
             compound="left",
             height=30,
@@ -271,6 +271,31 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             text_color="#F4F4F5",
         )
         restore_btn.pack(fill="x")
+
+        mode_row = ctk.CTkFrame(gsheet_frame, fg_color="transparent")
+        mode_row.pack(fill="x", padx=12, pady=(0, 10))
+
+        self.formula_mask_var = ctk.BooleanVar(value=(settings.gsheet_publish_mode == "values"))
+        self.formula_mask_checkbox = ctk.CTkCheckBox(
+            mode_row,
+            text="Mask Formulas (Values-Only / Safe for Public View-Only Sharing)",
+            variable=self.formula_mask_var,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#F4F4F5",
+            fg_color="#3B82F6",
+            hover_color="#2563EB",
+        )
+        self.formula_mask_checkbox.pack(anchor="w")
+
+        mask_desc = ctk.CTkLabel(
+            mode_row,
+            text="Hides all proprietary trading formulas from Google Sheet viewers. Excel computes signals locally and publishes evaluated values.",
+            font=ctk.CTkFont(size=11),
+            text_color="#94A3B8",
+            wraplength=480,
+            justify="left",
+        )
+        mask_desc.pack(anchor="w", padx=(28, 0), pady=(2, 0))
 
         # 4. Debug Console Option (Windows)
         debug_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
@@ -394,10 +419,13 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
 
         excel_path = self.excel_path_entry.get().strip()
         sheet_name = self.sheet_entry.get().strip() or "BST"
+        is_masked = self.formula_mask_var.get()
+        mode_str = "values" if is_masked else "formulas"
+        mode_label = "Values-Only (Formulas Hidden for Viewers)" if is_masked else "Live Formulas (Logic Exposed)"
 
         confirm = messagebox.askyesno(
             "Restore Google Sheet BST",
-            f"This will restore the '{sheet_name}' sheet in your Google Sheet with all 230+ scripts, headers, and trading formulas directly from:\n{excel_path}\n\nAny corrupted or missing cells will be cleanly restored.\n\nDo you want to proceed?",
+            f"This will restore the '{sheet_name}' sheet in your Google Sheet with all 230+ scripts and headers directly from:\n{excel_path}\n\nMode: {mode_label}\n\nAny corrupted or missing cells will be cleanly restored.\n\nDo you want to proceed?",
             parent=self,
         )
         if not confirm:
@@ -407,6 +435,7 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             market_store=None,
             webhook_url=url,
             sheet_name=sheet_name,
+            publish_mode=mode_str,
         )
         res = syncer.restore_bst_template(excel_path=excel_path)
         if res.get("success"):
@@ -432,15 +461,18 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         gsheet_val = self.gsheet_entry.get().strip()
         excel_path_val = self.excel_path_entry.get().strip()
         sheet_val = self.sheet_entry.get().strip()
+        publish_mode = "values" if self.formula_mask_var.get() else "formulas"
 
         env_path = settings.root_dir / ".env"
 
         # Update environment variables
         update_env_variable("UPSTOX_ACCESS_TOKEN", token_val, env_path)
         update_env_variable("GOOGLE_SHEET_WEBHOOK_URL", gsheet_val, env_path)
+        update_env_variable("GSHEET_PUBLISH_MODE", publish_mode, env_path)
 
         os.environ["UPSTOX_ACCESS_TOKEN"] = token_val
         os.environ["GOOGLE_SHEET_WEBHOOK_URL"] = gsheet_val
+        os.environ["GSHEET_PUBLISH_MODE"] = publish_mode
 
         # Update runtime settings
         settings.config.setdefault("excel", {})["file_path"] = excel_path_val

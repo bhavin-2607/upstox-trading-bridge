@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import queue
 import threading
 import time
@@ -78,6 +79,7 @@ class BSTSyncer:
         self._xw_book = None
         self._xw_sheet = None
         self._xw_app = None
+        self._last_evaluated_matrix: Optional[List[List[Any]]] = None
 
     def _connect_xlwings(self) -> bool:
         """Connect to active Excel workbook via xlwings."""
@@ -352,6 +354,86 @@ class BSTSyncer:
                     logger.debug(f"Error dispatching dynamic script detection: {e}")
             return True, f"Added {clean_sym} to row {target_row}", target_row
         return False, "Could not write to Excel sheet. If the file is open, click 'Start Live Feed' first.", 0
+
+    @staticmethod
+    def _sanitize_cell(v: Any) -> Any:
+        if v is None:
+            return ""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            # Handle COM error integer codes in xlwings (e.g. -2146826288 for #DIV/0!)
+            if isinstance(v, int) and -2146826300 < v < -2146826200:
+                return ""
+            if isinstance(v, float):
+                if math.isnan(v) or math.isinf(v):
+                    return ""
+                return round(v, 2)
+            return v
+        s = str(v).strip()
+        if s.startswith("#") and any(err in s for err in ("DIV/0", "N/A", "VALUE", "REF", "NAME", "NUM", "NULL")):
+            return ""
+        return s
+
+    def get_evaluated_matrix(
+        self,
+        min_row: Optional[int] = None,
+        max_row: Optional[int] = None,
+        max_col: int = 49,
+    ) -> Optional[List[List[Any]]]:
+        """
+        Extract the full evaluated grid (values-only, zero formulas) from Excel.
+        Used for Option 1 formula masking when pushing live data to Google Sheets.
+        """
+        if not self._row_map:
+            return self._last_evaluated_matrix
+
+        start_r = min_row if min_row is not None else min(self._row_map.keys())
+        end_r = max_row if max_row is not None else max(self._row_map.keys())
+        if end_r < start_r:
+            return self._last_evaluated_matrix
+
+        # 1. Try reading from active xlwings sheet (instant COM block read)
+        if self._xw_sheet:
+            try:
+                raw = self._xw_sheet.range((start_r, 1), (end_r, max_col)).value
+                if start_r == end_r:
+                    raw = [raw]
+                cleaned: List[List[Any]] = []
+                for row in raw:
+                    if isinstance(row, list):
+                        cleaned.append([self._sanitize_cell(c) for c in row])
+                    else:
+                        cleaned.append([self._sanitize_cell(row)])
+                self._last_evaluated_matrix = cleaned
+                return cleaned
+            except Exception as e:
+                err_str = str(e)
+                if "0x80010001" in err_str or "rejected by callee" in err_str:
+                    logger.debug("Excel is in cell-edit mode while reading evaluated grid; using cached values.")
+                else:
+                    logger.debug(f"xlwings get_evaluated_matrix error: {e}")
+                if self._last_evaluated_matrix:
+                    return self._last_evaluated_matrix
+
+        # 2. Fallback to openpyxl with data_only=True
+        if self.file_path and self.file_path.exists():
+            try:
+                wb = openpyxl.load_workbook(self.file_path, data_only=True)
+                ws = wb[self.sheet_name] if self.sheet_name in wb.sheetnames else wb.active
+                cleaned = []
+                for r in range(start_r, end_r + 1):
+                    row_vals = []
+                    for c in range(1, max_col + 1):
+                        row_vals.append(self._sanitize_cell(ws.cell(r, c).value))
+                    cleaned.append(row_vals)
+                wb.close()
+                self._last_evaluated_matrix = cleaned
+                return cleaned
+            except Exception as e:
+                logger.debug(f"openpyxl data_only get_evaluated_matrix error: {e}")
+
+        return self._last_evaluated_matrix
 
     def _process_pending_appends(self) -> None:
         """Process queued script additions on BSTSyncer's dedicated COM thread."""

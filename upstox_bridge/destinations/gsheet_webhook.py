@@ -31,6 +31,7 @@ class GoogleSheetWebhookSyncer:
         refresh_sec: Optional[float] = None,
         mode: str = "standard",
         bst_syncer: Optional[Any] = None,
+        publish_mode: Optional[str] = None,
         on_gsheet_scripts_detected: Optional[Callable[[List[Tuple[int, str]]], None]] = None,
         on_gsheet_script_deleted: Optional[Callable[[int], None]] = None,
     ):
@@ -40,6 +41,7 @@ class GoogleSheetWebhookSyncer:
         self.refresh_sec = refresh_sec if refresh_sec is not None else settings.gsheet_refresh_sec
         self.mode = mode
         self.bst_syncer = bst_syncer
+        self.publish_mode = (publish_mode or getattr(settings, "gsheet_publish_mode", "values") or "values").strip().lower()
         self.on_gsheet_scripts_detected = on_gsheet_scripts_detected
         self.on_gsheet_script_deleted = on_gsheet_script_deleted
 
@@ -96,6 +98,21 @@ class GoogleSheetWebhookSyncer:
         deleted_tail = [r for r in getattr(self.bst_syncer, "_deleted_rows_excel", {}) if r > max_row]
         if deleted_tail:
             max_row = max(max_row, max(deleted_tail))
+
+        # Option 1: Values-Only Full Matrix Mode (Formula Masking for Public Viewers)
+        if self.publish_mode == "values" and self.bst_syncer and hasattr(self.bst_syncer, "get_evaluated_matrix"):
+            matrix = self.bst_syncer.get_evaluated_matrix(min_row=min_row, max_row=max_row, max_col=49)
+            if matrix:
+                payload: Dict[str, Any] = {
+                    "mode": "bst_matrix",
+                    "sheet_name": self.sheet_name,
+                    "start_row": min_row,
+                    "matrix": matrix,
+                }
+                if self._sync_count % 3 == 0:
+                    payload["sync_scripts"] = True
+
+                return self._send_payload(payload, len(matrix))
 
         a_data: List[List[str]] = []
         cg_data: List[List[Any]] = []
@@ -377,9 +394,13 @@ class GoogleSheetWebhookSyncer:
                     if val is None:
                         row_vals.append("")
                     elif str(val).startswith("="):
-                        # Clean Excel dummy function wrapper for Google Sheets formulas
-                        clean_f = re.sub(r'__XLUDF\.DUMMYFUNCTION\("([^"]+)"\)', r"\1", str(val))
-                        row_vals.append(clean_f)
+                        if self.publish_mode == "values":
+                            # In values mode, mask formulas: do NOT send formula strings to Google Sheets
+                            row_vals.append("")
+                        else:
+                            # Clean Excel dummy function wrapper for Google Sheets formulas
+                            clean_f = re.sub(r'__XLUDF\.DUMMYFUNCTION\("([^"]+)"\)', r"\1", str(val))
+                            row_vals.append(clean_f)
                     else:
                         row_vals.append(val)
                 rows.append(row_vals)
@@ -415,10 +436,11 @@ class GoogleSheetWebhookSyncer:
                 self._last_sent_a = None
                 self._last_sent_yz = None
 
+                mode_desc = "values-only (formulas masked)" if self.publish_mode == "values" else "headers, scripts, and formulas"
                 return {
                     "success": True,
                     "rows_restored": len(rows),
-                    "message": f"Successfully restored '{self.sheet_name}' on Google Sheets with {len(rows)} scripts, headers, and formulas!",
+                    "message": f"Successfully restored '{self.sheet_name}' on Google Sheets with {len(rows)} scripts ({mode_desc})!",
                 }
             else:
                 return {

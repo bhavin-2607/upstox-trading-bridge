@@ -120,6 +120,11 @@ class Settings:
     def gsheet_sheet_name(self) -> str:
         return str(self.config.get("google_sheets", {}).get("sheet_name", "LiveMarket"))
 
+    @property
+    def gsheet_publish_mode(self) -> str:
+        """Publish mode for Google Sheets: 'values' (Formula Masking) or 'formulas' (Legacy)."""
+        return os.getenv("GSHEET_PUBLISH_MODE", "values").strip().lower()
+
     # Excel settings
     @property
     def excel_enabled(self) -> bool:
