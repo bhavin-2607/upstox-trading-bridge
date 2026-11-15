@@ -254,6 +254,24 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         )
         test_btn.pack(side="right")
 
+        restore_row = ctk.CTkFrame(gsheet_frame, fg_color="transparent")
+        restore_row.pack(fill="x", padx=12, pady=(0, 10))
+
+        restore_btn = ctk.CTkButton(
+            restore_row,
+            text=" Restore BST Template & Formulas to Google Sheet",
+            image=IconManager.get_icon("save", size=(13, 13)),
+            compound="left",
+            height=30,
+            command=self._restore_gsheet_bst,
+            fg_color="#18181B",
+            hover_color="#27272A",
+            border_color="#3F3F46",
+            border_width=1,
+            text_color="#F4F4F5",
+        )
+        restore_btn.pack(fill="x")
+
         # 4. Debug Console Option (Windows)
         debug_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
         debug_frame.pack(fill="x", padx=pad_x, pady=8)
@@ -367,6 +385,42 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             messagebox.showinfo("Success", res.get("message", "Google Sheet connection successful!"), parent=self)
         else:
             messagebox.showerror("Connection Failed", res.get("error", "Failed to connect to Google Sheet."), parent=self)
+
+    def _restore_gsheet_bst(self):
+        url = self.gsheet_entry.get().strip()
+        if not url:
+            messagebox.showwarning("Empty URL", "Please enter a Google Apps Script Webhook URL first.", parent=self)
+            return
+
+        excel_path = self.excel_path_entry.get().strip()
+        sheet_name = self.sheet_entry.get().strip() or "BST"
+
+        confirm = messagebox.askyesno(
+            "Restore Google Sheet BST",
+            f"This will restore the '{sheet_name}' sheet in your Google Sheet with all 230+ scripts, headers, and trading formulas directly from:\n{excel_path}\n\nAny corrupted or missing cells will be cleanly restored.\n\nDo you want to proceed?",
+            parent=self,
+        )
+        if not confirm:
+            return
+
+        syncer = GoogleSheetWebhookSyncer(
+            market_store=None,
+            webhook_url=url,
+            sheet_name=sheet_name,
+        )
+        res = syncer.restore_bst_template(excel_path=excel_path)
+        if res.get("success"):
+            messagebox.showinfo(
+                "Restoration Complete",
+                res.get("message", f"BST sheet '{sheet_name}' successfully restored in Google Sheets!"),
+                parent=self,
+            )
+        else:
+            messagebox.showerror(
+                "Restoration Failed",
+                res.get("error", "Failed to restore BST template to Google Sheet."),
+                parent=self,
+            )
 
     def _on_debug_switch_toggled(self):
         is_on = bool(self.debug_switch.get())

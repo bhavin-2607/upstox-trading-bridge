@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
+import re
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -127,12 +129,12 @@ class GoogleSheetWebhookSyncer:
             "vol_data": vol_data,
         }
 
-        # Send script names in Column A only on initial sync or when list of scripts changes
-        if a_data != self._last_sent_a:
+        # Send script names in Column A on initial cycles (first 3), every 30 cycles (~90s), or when list changes
+        if self._sync_count < 3 or (self._sync_count % 30 == 0) or a_data != self._last_sent_a:
             payload["a_data"] = a_data
 
-        # Send previous day high/low only when data is available and changed
-        if yz_data != self._last_sent_yz and any(any(v > 0 for v in row) for row in yz_data):
+        # Send previous day high/low on first 3 cycles or when data changes
+        if (self._sync_count < 3 or yz_data != self._last_sent_yz) and any(any(v > 0 for v in row) for row in yz_data):
             payload["yz_data"] = yz_data
 
         # Request script list from Google Sheet every 3rd cycle (~9s) to reduce Apps Script execution time
@@ -204,7 +206,7 @@ class GoogleSheetWebhookSyncer:
             time.sleep(self.refresh_sec)
 
     def test_connection(self) -> dict:
-        """Test the Webhook connection and return diagnosis."""
+        """Test the Webhook connection safely with zero sheet writes or formula modification."""
         if not self.webhook_url:
             return {
                 "success": False,
@@ -212,13 +214,10 @@ class GoogleSheetWebhookSyncer:
             }
 
         try:
-            sample_data = [
-                MarketStore.HEADERS,
-                ["TEST_NIFTY", "NSE_INDEX|Nifty 50", 24000.0, 100.0, 24020.0, 23900.0, 24050.0, 23850.0, 23900.0, 100000, "TEST"],
-            ]
             resp = requests.post(
                 self.webhook_url,
-                json={"mode": "standard", "sheet_name": self.sheet_name, "data": sample_data},
+                json={"mode": "ping", "sheet_name": self.sheet_name},
+                headers={"Content-Type": "application/json"},
                 timeout=10.0,
                 allow_redirects=True,
             )
@@ -243,7 +242,7 @@ class GoogleSheetWebhookSyncer:
                     "success": True,
                     "status_code": resp.status_code,
                     "response": resp.text[:300],
-                    "message": "Google Sheet Webhook responded successfully! Live row written.",
+                    "message": "Google Sheet Webhook responded successfully! Verified with zero sheet writes.",
                 }
             else:
                 return {
@@ -255,4 +254,109 @@ class GoogleSheetWebhookSyncer:
             return {
                 "success": False,
                 "error": f"Connection failed: {str(e)}",
+            }
+
+    def restore_bst_template(self, excel_path: Optional[str | Path] = None) -> dict:
+        """
+        Extract Row 1 headers, Row 2 headers, Column A scripts, and column formulas
+        from the local Excel workbook (trial.xlsx / bst.xlsx) and upload them to Google Sheets
+        to cleanly initialize or restore the BST trading sheet.
+        """
+        import openpyxl
+
+        if not self.webhook_url:
+            return {
+                "success": False,
+                "error": "GOOGLE_SHEET_WEBHOOK_URL is empty. Please configure it in Settings first.",
+            }
+
+        file_path = Path(excel_path) if excel_path else (
+            getattr(self.bst_syncer, "file_path", None) or settings.excel_file_path
+        )
+        file_path = Path(file_path).resolve()
+
+        if not file_path.exists():
+            return {
+                "success": False,
+                "error": f"Excel workbook not found at: {file_path}",
+            }
+
+        try:
+            wb = openpyxl.load_workbook(file_path, data_only=False)
+            target_sheet = self.sheet_name if self.sheet_name in wb.sheetnames else "BST"
+            if target_sheet not in wb.sheetnames:
+                target_sheet = wb.sheetnames[0]
+            ws = wb[target_sheet]
+
+            max_col = min(ws.max_column or 50, 50)
+            if max_col < 30:
+                max_col = 50
+
+            r1 = [ws.cell(1, c).value or "" for c in range(1, max_col + 1)]
+            r2 = [ws.cell(2, c).value or "" for c in range(1, max_col + 1)]
+
+            rows: List[List[Any]] = []
+            for r in range(3, ws.max_row + 1):
+                sym = ws.cell(r, 1).value
+                if not sym and not ws.cell(r, 2).value:
+                    continue
+                row_vals: List[Any] = []
+                for c in range(1, max_col + 1):
+                    val = ws.cell(r, c).value
+                    if val is None:
+                        row_vals.append("")
+                    elif str(val).startswith("="):
+                        # Clean Excel dummy function wrapper for Google Sheets formulas
+                        clean_f = re.sub(r'__XLUDF\.DUMMYFUNCTION\("([^"]+)"\)', r"\1", str(val))
+                        row_vals.append(clean_f)
+                    else:
+                        row_vals.append(val)
+                rows.append(row_vals)
+
+            wb.close()
+
+            payload: Dict[str, Any] = {
+                "mode": "init_bst",
+                "sheet_name": self.sheet_name,
+                "headers_row1": r1,
+                "headers_row2": r2,
+                "rows": rows,
+            }
+
+            logger.info(f"Uploading BST template to Google Sheets '{self.sheet_name}' ({len(rows)} rows, {max_col} cols)...")
+            resp = requests.post(
+                self.webhook_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=45.0,
+                allow_redirects=True,
+            )
+
+            if resp.status_code == 200:
+                try:
+                    res_json = resp.json()
+                    if res_json.get("status") == "error":
+                        return {"success": False, "error": f"Apps Script error: {res_json.get('error')}"}
+                except Exception:
+                    pass
+
+                # Reset cache so next live sync reliably detects and refreshes
+                self._last_sent_a = None
+                self._last_sent_yz = None
+
+                return {
+                    "success": True,
+                    "rows_restored": len(rows),
+                    "message": f"Successfully restored '{self.sheet_name}' on Google Sheets with {len(rows)} scripts, headers, and formulas!",
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"HTTP {resp.status_code}: {resp.text[:250]}",
+                }
+        except Exception as e:
+            logger.error(f"Error restoring BST template to Google Sheet: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Restoration failed: {str(e)}",
             }

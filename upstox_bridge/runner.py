@@ -287,6 +287,8 @@ class BridgeRunner:
             gsheet_mode = "bst" if self.is_bst_mode else "standard"
             self.gsheet_syncer = GoogleSheetWebhookSyncer(
                 market_store=self.market_store,
+                webhook_url=settings.gsheet_webhook_url,
+                sheet_name=self.sheet_name,
                 mode=gsheet_mode,
                 bst_syncer=self.bst_syncer,
                 on_gsheet_scripts_detected=self.on_gsheet_scripts_received,
@@ -396,6 +398,8 @@ class BridgeRunner:
             gsheet_mode = "bst" if self.is_bst_mode else "standard"
             self.gsheet_syncer = GoogleSheetWebhookSyncer(
                 market_store=self.market_store,
+                webhook_url=settings.gsheet_webhook_url,
+                sheet_name=self.sheet_name,
                 mode=gsheet_mode,
                 bst_syncer=self.bst_syncer,
             )

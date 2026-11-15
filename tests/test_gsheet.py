@@ -95,6 +95,51 @@ class TestGoogleSheetWebhookSyncer(unittest.TestCase):
         self.assertEqual(len(received_scripts), 2)
         self.assertEqual(received_scripts[1], (4, "NSE:TCS"))
 
+    @patch("requests.post")
+    def test_connection_safe_ping(self, mock_post):
+        """Verify test_connection sends non-destructive ping without writing fake data."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = '{"status": "success", "mode": "ping"}'
+        mock_resp.json.return_value = {"status": "success", "mode": "ping"}
+        mock_post.return_value = mock_resp
+
+        res = self.syncer.test_connection()
+        self.assertTrue(res["success"])
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        payload = kwargs["json"]
+        self.assertEqual(payload["mode"], "ping")
+        self.assertEqual(payload["sheet_name"], "LiveMarket")
+        self.assertNotIn("data", payload)  # No fake rows written!
+
+    @patch("requests.post")
+    def test_restore_bst_template(self, mock_post):
+        """Verify restore_bst_template loads workbook and posts init_bst payload."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = '{"status": "success", "mode": "init_bst"}'
+        mock_resp.json.return_value = {"status": "success", "mode": "init_bst"}
+        mock_post.return_value = mock_resp
+
+        bst_gsyncer = GoogleSheetWebhookSyncer(
+            market_store=self.store,
+            webhook_url="https://script.google.com/macros/s/TEST/exec",
+            sheet_name="BST",
+            mode="bst",
+        )
+        res = bst_gsyncer.restore_bst_template("trial.xlsx")
+        self.assertTrue(res["success"])
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        payload = kwargs["json"]
+        self.assertEqual(payload["mode"], "init_bst")
+        self.assertEqual(payload["sheet_name"], "BST")
+        self.assertIn("headers_row1", payload)
+        self.assertIn("headers_row2", payload)
+        self.assertIn("rows", payload)
+        self.assertGreater(len(payload["rows"]), 200)
+
     def test_empty_webhook_url_error(self):
         empty_syncer = GoogleSheetWebhookSyncer(market_store=self.store, webhook_url="")
         with self.assertRaises(ValueError):
