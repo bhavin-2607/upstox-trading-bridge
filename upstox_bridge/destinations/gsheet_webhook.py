@@ -322,11 +322,42 @@ class GoogleSheetWebhookSyncer:
             }
 
         try:
+            import shutil
+
             wb = openpyxl.load_workbook(file_path, data_only=False)
             target_sheet = self.sheet_name if self.sheet_name in wb.sheetnames else "BST"
             if target_sheet not in wb.sheetnames:
                 target_sheet = wb.sheetnames[0]
             ws = wb[target_sheet]
+
+            # Self-healing: If the local Excel file was wiped (has < 10 scripts in Col A), load from master template
+            scripts_count = sum(1 for r in range(3, ws.max_row + 1) if str(ws.cell(r, 1).value or "").strip())
+            if scripts_count < 10:
+                master_candidates = [
+                    settings.root_dir / "templates" / "BST_Master_Template.xlsx",
+                    settings.root_dir / "bst.xlsx",
+                    settings.root_dir / "trial.xlsx",
+                ]
+                for cand in master_candidates:
+                    if cand.exists() and cand.resolve() != file_path.resolve():
+                        try:
+                            cand_wb = openpyxl.load_workbook(cand, data_only=False)
+                            cand_ws = cand_wb["BST"] if "BST" in cand_wb.sheetnames else cand_wb.active
+                            cand_count = sum(1 for r in range(3, cand_ws.max_row + 1) if str(cand_ws.cell(r, 1).value or "").strip())
+                            if cand_count >= 10:
+                                logger.info(f"Local file had {scripts_count} scripts. Restoring from master {cand.name} ({cand_count} scripts)...")
+                                wb.close()
+                                wb = cand_wb
+                                ws = cand_ws
+                                try:
+                                    shutil.copy(cand, file_path)
+                                    logger.info(f"Automatically restored local {file_path.name} from {cand.name}!")
+                                except Exception as copy_err:
+                                    logger.debug(f"Could not overwrite local file: {copy_err}")
+                                break
+                            cand_wb.close()
+                        except Exception:
+                            pass
 
             max_col = min(ws.max_column or 50, 50)
             if max_col < 30:
