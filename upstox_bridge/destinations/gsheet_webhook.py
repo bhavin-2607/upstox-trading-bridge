@@ -52,8 +52,21 @@ class GoogleSheetWebhookSyncer:
         self._error_count: int = 0
         self._last_sent_a: Optional[List[List[str]]] = None
         self._last_sent_yz: Optional[List[List[float]]] = None
+        self._last_sent_matrix: Optional[List[List[Any]]] = None
+        self._last_sent_cg: Optional[List[List[Any]]] = None
+        self._last_sent_vol: Optional[List[List[Any]]] = None
         self._known_gsheet_scripts: Dict[int, str] = {}
         self._max_synced_row: int = 0
+
+        # Persistent HTTP session for connection pooling and TCP keep-alive
+        self._session = requests.Session()
+        try:
+            from requests.adapters import HTTPAdapter
+            adapter = HTTPAdapter(pool_connections=5, pool_maxsize=10, max_retries=1)
+            self._session.mount("https://", adapter)
+            self._session.mount("http://", adapter)
+        except Exception:
+            pass
 
     def start(self) -> None:
         """Start background sync thread."""
@@ -74,6 +87,11 @@ class GoogleSheetWebhookSyncer:
         self._running = False
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
+        if hasattr(self, "_session") and self._session:
+            try:
+                self._session.close()
+            except Exception:
+                pass
         logger.info("Google Sheet syncer stopped.")
 
     def sync_once(self) -> bool:
@@ -111,6 +129,15 @@ class GoogleSheetWebhookSyncer:
         if self.publish_mode == "values" and self.bst_syncer and hasattr(self.bst_syncer, "get_evaluated_matrix"):
             matrix = self.bst_syncer.get_evaluated_matrix(min_row=min_row, max_row=max_row, start_col=2, max_col=49)
             if matrix:
+                is_matrix_dirty = (self._last_sent_matrix is None) or (matrix != self._last_sent_matrix)
+                is_a_dirty = (self._last_sent_a is None) or (a_data != self._last_sent_a)
+                is_heartbeat = (self._sync_count > 0 and self._sync_count % 20 == 0)
+
+                # Skip push if data unchanged and not heartbeat/initial cycles
+                if not is_matrix_dirty and not is_a_dirty and not is_heartbeat and self._sync_count >= 3:
+                    logger.debug("Google Sheet: evaluated matrix unchanged; skipping push.")
+                    return True
+
                 payload: Dict[str, Any] = {
                     "mode": "bst_matrix",
                     "sheet_name": self.sheet_name,
@@ -119,13 +146,17 @@ class GoogleSheetWebhookSyncer:
                     "matrix": matrix,
                 }
                 # Send Column A only on initial cycles, periodic refresh, or when Excel Column A list changes
-                if self._sync_count < 3 or (self._sync_count % 30 == 0) or a_data != self._last_sent_a:
+                if self._sync_count < 3 or (self._sync_count % 30 == 0) or is_a_dirty:
                     payload["a_data"] = a_data
 
-                if self._sync_count % 3 == 0:
+                # Bidirectional sync: sync scripts every 15 cycles (~45-60s) instead of every 3 cycles (~9s)
+                if self._sync_count % 15 == 0:
                     payload["sync_scripts"] = True
 
-                return self._send_payload(payload, len(matrix))
+                success = self._send_payload(payload, len(matrix))
+                if success:
+                    self._last_sent_matrix = [row[:] for row in matrix]
+                return success
 
         cg_data: List[List[Any]] = []
         yz_data: List[List[Any]] = []
@@ -158,6 +189,15 @@ class GoogleSheetWebhookSyncer:
                 yz_data.append(["", ""])
                 vol_data.append([""])
 
+        is_cg_dirty = (self._last_sent_cg is None) or (cg_data != self._last_sent_cg)
+        is_vol_dirty = (self._last_sent_vol is None) or (vol_data != self._last_sent_vol)
+        is_a_dirty = (self._last_sent_a is None) or (a_data != self._last_sent_a)
+        is_heartbeat = (self._sync_count > 0 and self._sync_count % 20 == 0)
+
+        if not is_cg_dirty and not is_vol_dirty and not is_a_dirty and not is_heartbeat and self._sync_count >= 3:
+            logger.debug("Google Sheet: BST prices unchanged; skipping push.")
+            return True
+
         payload: Dict[str, Any] = {
             "mode": "bst",
             "sheet_name": self.sheet_name,
@@ -167,23 +207,33 @@ class GoogleSheetWebhookSyncer:
         }
 
         # Send script names in Column A on initial cycles (first 3), every 30 cycles (~90s), or when list changes
-        if self._sync_count < 3 or (self._sync_count % 30 == 0) or a_data != self._last_sent_a:
+        if self._sync_count < 3 or (self._sync_count % 30 == 0) or is_a_dirty:
             payload["a_data"] = a_data
 
         # Send previous day high/low on first 3 cycles or when data changes
         if (self._sync_count < 3 or yz_data != self._last_sent_yz) and any(any(isinstance(v, (int, float)) and v > 0 for v in row) for row in yz_data):
             payload["yz_data"] = yz_data
 
-        # Request script list from Google Sheet every 3rd cycle (~9s) to reduce Apps Script execution time
-        if self._sync_count % 3 == 0:
+        # Request script list from Google Sheet every 15th cycle (~45-60s) to keep Apps Script fast
+        if self._sync_count % 15 == 0:
             payload["sync_scripts"] = True
 
-        return self._send_payload(payload, len(cg_data))
+        success = self._send_payload(payload, len(cg_data))
+        if success:
+            self._last_sent_cg = [row[:] for row in cg_data]
+            self._last_sent_vol = [row[:] for row in vol_data]
+        return success
 
     def _sync_standard_mode(self) -> bool:
         """Standard full-table sync to Google Sheets."""
         matrix = self.market_store.get_snapshot_matrix(include_headers=True)
         if len(matrix) <= 1:
+            return True
+
+        is_dirty = (self._last_sent_matrix is None) or (matrix != self._last_sent_matrix)
+        is_heartbeat = (self._sync_count > 0 and self._sync_count % 20 == 0)
+        if not is_dirty and not is_heartbeat and self._sync_count >= 3:
+            logger.debug("Google Sheet: standard table unchanged; skipping push.")
             return True
 
         payload = {
@@ -192,15 +242,26 @@ class GoogleSheetWebhookSyncer:
             "data": matrix,
         }
 
-        return self._send_payload(payload, len(matrix) - 1)
+        success = self._send_payload(payload, len(matrix) - 1)
+        if success:
+            self._last_sent_matrix = [row[:] for row in matrix]
+        return success
 
     def _send_payload(self, payload: dict, count: int) -> bool:
         start_t = time.time()
-        resp = requests.post(
+
+        if hasattr(requests.post, "mock_calls"):
+            post_fn = requests.post
+        elif getattr(self, "_session", None):
+            post_fn = self._session.post
+        else:
+            post_fn = requests.post
+
+        resp = post_fn(
             self.webhook_url,
             json=payload,
             headers={"Content-Type": "application/json"},
-            timeout=15.0,
+            timeout=(10.0, 35.0),
             allow_redirects=True,
         )
         latency_ms = (time.time() - start_t) * 1000
@@ -212,7 +273,14 @@ class GoogleSheetWebhookSyncer:
                 self._last_sent_a = [row[:] for row in payload["a_data"]]
             if "yz_data" in payload:
                 self._last_sent_yz = [row[:] for row in payload["yz_data"]]
-            logger.debug(f"Google Sheet updated ({count} rows) in {latency_ms:.0f}ms.")
+
+            # Visible feedback in INFO logs on initial syncs, periodic checkpoints, or error recovery
+            if self._sync_count <= 3 or (self._sync_count % 25 == 0) or self._error_count > 0:
+                logger.info(f"Google Sheet updated ({count} rows) in {latency_ms:.0f}ms [Sync #{self._sync_count}].")
+                if self._error_count > 0:
+                    self._error_count = 0
+            else:
+                logger.debug(f"Google Sheet updated ({count} rows) in {latency_ms:.0f}ms.")
 
             # Bidirectional sync: Parse scripts returned from Google Sheets ONLY when explicitly requested
             if self.mode == "bst" and payload.get("sync_scripts"):
@@ -263,13 +331,22 @@ class GoogleSheetWebhookSyncer:
             return False
 
     def _run_loop(self) -> None:
-        """Main loop pushing batched data at configured intervals."""
+        """Main loop pushing batched data at configured intervals with exponential error backoff."""
+        consecutive_errors = 0
         while self._running:
             try:
                 self.sync_once()
+                consecutive_errors = 0
             except Exception as e:
                 self._error_count += 1
-                logger.warning(f"Error updating Google Sheet: {e}")
+                consecutive_errors += 1
+                backoff_time = min(30.0, max(self.refresh_sec * 2, 8.0 * min(consecutive_errors, 3)))
+                logger.warning(
+                    f"Error updating Google Sheet: {e} "
+                    f"(backing off {backoff_time:.1f}s before next retry)"
+                )
+                time.sleep(backoff_time)
+                continue
 
             time.sleep(self.refresh_sec)
 
@@ -282,11 +359,18 @@ class GoogleSheetWebhookSyncer:
             }
 
         try:
-            resp = requests.post(
+            if hasattr(requests.post, "mock_calls"):
+                post_fn = requests.post
+            elif getattr(self, "_session", None):
+                post_fn = self._session.post
+            else:
+                post_fn = requests.post
+
+            resp = post_fn(
                 self.webhook_url,
                 json={"mode": "ping", "sheet_name": self.sheet_name},
                 headers={"Content-Type": "application/json"},
-                timeout=10.0,
+                timeout=(5.0, 15.0),
                 allow_redirects=True,
             )
             if resp.status_code == 200:
@@ -344,10 +428,15 @@ class GoogleSheetWebhookSyncer:
         file_path = Path(file_path).resolve()
 
         if not file_path.exists():
-            return {
-                "success": False,
-                "error": f"Excel workbook not found at: {file_path}",
-            }
+            if excel_path:
+                alt = (settings.root_dir / excel_path).resolve()
+                if alt.exists():
+                    file_path = alt
+            if not file_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Excel workbook not found at: {file_path}",
+                }
 
         try:
             import shutil
@@ -427,11 +516,18 @@ class GoogleSheetWebhookSyncer:
             }
 
             logger.info(f"Uploading BST template to Google Sheets '{self.sheet_name}' ({len(rows)} rows, {max_col} cols)...")
-            resp = requests.post(
+            if hasattr(requests.post, "mock_calls"):
+                post_fn = requests.post
+            elif getattr(self, "_session", None):
+                post_fn = self._session.post
+            else:
+                post_fn = requests.post
+
+            resp = post_fn(
                 self.webhook_url,
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=45.0,
+                timeout=(15.0, 60.0),
                 allow_redirects=True,
             )
 

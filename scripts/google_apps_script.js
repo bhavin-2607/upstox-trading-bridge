@@ -111,14 +111,12 @@ function doPost(e) {
       var currentScripts = null;
       if (payload.sync_scripts) {
         currentScripts = [];
-        var lastRow = sheet.getLastRow();
-        if (lastRow >= startRow) {
-          var colAVals = sheet.getRange(startRow, 1, lastRow - startRow + 1, 1).getValues();
-          for (var i = 0; i < colAVals.length; i++) {
-            var val = colAVals[i][0];
-            if (val !== null && val !== undefined && String(val).trim() !== "") {
-              currentScripts.push([startRow + i, String(val).trim()]);
-            }
+        var scanRows = (matrix && matrix.length > 0) ? matrix.length : 300;
+        var colAVals = sheet.getRange(startRow, 1, scanRows, 1).getValues();
+        for (var i = 0; i < colAVals.length; i++) {
+          var val = colAVals[i][0];
+          if (val !== null && val !== undefined && String(val).trim() !== "") {
+            currentScripts.push([startRow + i, String(val).trim()]);
           }
         }
       }
@@ -135,6 +133,8 @@ function doPost(e) {
         sheet.getRange(startRow, startCol, numRows, numCols).setValues(matrix);
         updatedRows = numRows;
       }
+
+      SpreadsheetApp.flush();
 
       var matrixResp = {
         status: "success",
@@ -185,17 +185,17 @@ function doPost(e) {
       var currentScripts = null;
       if (payload.sync_scripts) {
         currentScripts = [];
-        var lastRow = sheet.getLastRow();
-        if (lastRow >= startRow) {
-          var colAVals = sheet.getRange(startRow, 1, lastRow - startRow + 1, 1).getValues();
-          for (var i = 0; i < colAVals.length; i++) {
-            var val = colAVals[i][0];
-            if (val !== null && val !== undefined && String(val).trim() !== "") {
-              currentScripts.push([startRow + i, String(val).trim()]);
-            }
+        var scanRows = (cgData && cgData.length > 0) ? cgData.length : 300;
+        var colAVals = sheet.getRange(startRow, 1, scanRows, 1).getValues();
+        for (var i = 0; i < colAVals.length; i++) {
+          var val = colAVals[i][0];
+          if (val !== null && val !== undefined && String(val).trim() !== "") {
+            currentScripts.push([startRow + i, String(val).trim()]);
           }
         }
       }
+
+      SpreadsheetApp.flush();
 
       var bstResp = {
         status: "success",

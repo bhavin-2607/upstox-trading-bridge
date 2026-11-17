@@ -253,6 +253,58 @@ class TestGoogleSheetWebhookSyncer(unittest.TestCase):
         with self.assertRaises(ValueError):
             empty_syncer.sync_once()
 
+    @patch("requests.post")
+    def test_dirty_checking_skips_unchanged_matrix(self, mock_post):
+        """Verify unchanged evaluated matrix is not spammed to Google Sheets."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = '{"status": "success", "mode": "bst_matrix"}'
+        mock_post.return_value = mock_resp
+
+        mock_bst = MagicMock()
+        mock_bst._row_map = {3: ("NSE_INDEX|Nifty 50", "NIFTY 50")}
+        mock_bst.get_evaluated_matrix.return_value = [
+            ["UP", 24150.0, 24000.0, 24200.0, 23950.0]
+        ]
+
+        bst_gsyncer = GoogleSheetWebhookSyncer(
+            market_store=self.store,
+            webhook_url="https://script.google.com/macros/s/TEST/exec",
+            sheet_name="BST",
+            mode="bst",
+            publish_mode="values",
+            bst_syncer=mock_bst,
+        )
+
+        # Initial 3 cycles send
+        bst_gsyncer.sync_once()
+        bst_gsyncer.sync_once()
+        bst_gsyncer.sync_once()
+        self.assertEqual(mock_post.call_count, 3)
+
+        # Cycle 4: data has NOT changed -> skipped!
+        bst_gsyncer.sync_once()
+        self.assertEqual(mock_post.call_count, 3)
+
+        # Cycle 5: data changes -> sent!
+        mock_bst.get_evaluated_matrix.return_value = [
+            ["UP", 24180.0, 24000.0, 24200.0, 23950.0]
+        ]
+        bst_gsyncer.sync_once()
+        self.assertEqual(mock_post.call_count, 4)
+
+    @patch("requests.post")
+    def test_send_payload_uses_extended_timeout(self, mock_post):
+        """Verify HTTP timeout is extended to 35s to prevent read timeout during large sheet writes."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = '{"status": "success"}'
+        mock_post.return_value = mock_resp
+
+        self.syncer.sync_once()
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["timeout"], (10.0, 35.0))
+
 
 if __name__ == "__main__":
     unittest.main()
