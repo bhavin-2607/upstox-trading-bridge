@@ -154,6 +154,21 @@ class InstrumentMaster:
 
         return clean.strip()
 
+    def get_symbol_by_key(self, key: str) -> Optional[str]:
+        """Lookup human trading symbol by instrument key."""
+        if not self._is_loaded:
+            self.load()
+        rec = self._by_key.get(key)
+        if rec and "trading_symbol" in rec:
+            return rec["trading_symbol"]
+        for sym, k in COMMON_INDEX_MAP.items():
+            if k == key:
+                return sym
+        for sym, k in COMMON_EQUITY_MAP.items():
+            if k == key:
+                return sym
+        return None
+
     def resolve_symbol(self, symbol_or_key: str) -> str:
         """
         Convert human trading symbol (e.g. 'RELIANCE', 'NIFTY 50', 'GOLD DEC FUT',

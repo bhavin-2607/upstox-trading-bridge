@@ -67,6 +67,7 @@ class BSTSyncer:
         self._stats_written = False
         self._last_yz_matrix: Optional[List[List[Optional[float]]]] = None
         self._last_reconnect_attempt = 0.0
+        self._last_alert_eval_time = 0.0
 
         self.status: str = self.STATE_DISCONNECTED
         self.last_sync_time: float = 0.0
@@ -681,6 +682,51 @@ class BSTSyncer:
             self._sync_cycle_xlwings()
         else:
             self._sync_cycle_openpyxl()
+
+        # Synchronize BST signals and targets with AlertEngine
+        self._sync_alerts_and_signals()
+
+    def _sync_alerts_and_signals(self) -> None:
+        """Periodically evaluate BST signals (SUPER/INTRA) and auto-monitor targets."""
+        if not (settings.alert_auto_bst_enabled or settings.sound_signals_enabled):
+            return
+        if not self._row_map:
+            return
+
+        now = time.time()
+        if now - self._last_alert_eval_time < 1.5:
+            return
+        self._last_alert_eval_time = now
+
+        try:
+            from upstox_bridge.core.alert_engine import alert_engine
+            min_row = min(self._row_map.keys())
+            max_row = max(self._row_map.keys())
+
+            if self._xw_sheet:
+                # Range J:P is Col 10 to 16: INTRA, SUPER, ENTRY, SL, TGT1, TGT2, TGT3
+                raw = self._xw_sheet.range(f"J{min_row}:P{max_row}").value
+                block = [raw] if min_row == max_row else raw
+                if isinstance(block, list):
+                    for idx, r in enumerate(range(min_row, max_row + 1)):
+                        if r in self._row_map and idx < len(block):
+                            row_vals = block[idx]
+                            if isinstance(row_vals, list) and len(row_vals) >= 7:
+                                intra_sig = str(row_vals[0] or "")
+                                super_sig = str(row_vals[1] or "")
+                                entry = float(row_vals[2]) if isinstance(row_vals[2], (int, float)) else None
+                                sl = float(row_vals[3]) if isinstance(row_vals[3], (int, float)) else None
+                                tgt1 = float(row_vals[4]) if isinstance(row_vals[4], (int, float)) else None
+                                tgt2 = float(row_vals[5]) if isinstance(row_vals[5], (int, float)) else None
+                                tgt3 = float(row_vals[6]) if isinstance(row_vals[6], (int, float)) else None
+
+                                _, clean_sym = self._row_map[r]
+                                if settings.sound_signals_enabled:
+                                    alert_engine.evaluate_signal_change(clean_sym, super_sig=super_sig, intra_sig=intra_sig)
+                                if settings.alert_auto_bst_enabled:
+                                    alert_engine.update_bst_targets(clean_sym, entry=entry, sl=sl, tgt1=tgt1, tgt2=tgt2, tgt3=tgt3)
+        except Exception as e:
+            logger.debug(f"BST Syncer alerts sync error: {e}")
 
     def start(self) -> None:
         """Start background sync loop."""

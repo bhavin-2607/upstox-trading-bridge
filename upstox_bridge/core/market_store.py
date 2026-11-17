@@ -185,6 +185,11 @@ class MarketStore:
                     val = float(ltp)
                     if val > 0:
                         q.ltp = val
+                        try:
+                            from upstox_bridge.core.alert_engine import alert_engine
+                            alert_engine.evaluate_tick(instrument_key, val, clean_symbol=q.symbol)
+                        except Exception:
+                            pass
                 except (ValueError, TypeError):
                     pass
             if open_price is not None:

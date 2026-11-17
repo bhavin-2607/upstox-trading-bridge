@@ -30,7 +30,7 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         self.on_save_callback = on_save_callback
 
         self.title("BSA Trading Bridge — Settings & Credentials")
-        self.geometry("640x660")
+        self.geometry("660x720")
         self.resizable(False, False)
 
         # Apply Pure Dark Black OLED canvas styling
@@ -74,9 +74,13 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         )
         title_label.pack(padx=pad_x, pady=(16, 6), anchor="w")
 
+        # Scrollable container for configuration sections
+        self.scroll_container = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll_container.pack(fill="both", expand=True, padx=pad_x, pady=(0, 6))
+
         # Official Brand Endorsement Card
-        endorse_frame = ctk.CTkFrame(self, fg_color="#0B1933", border_color="#1687E8", border_width=1, corner_radius=10)
-        endorse_frame.pack(fill="x", padx=pad_x, pady=(0, 10))
+        endorse_frame = ctk.CTkFrame(self.scroll_container, fg_color="#0B1933", border_color="#1687E8", border_width=1, corner_radius=10)
+        endorse_frame.pack(fill="x", pady=(0, 8))
 
         endorse_inner = ctk.CTkFrame(endorse_frame, fg_color="transparent")
         endorse_inner.pack(fill="x", padx=12, pady=8)
@@ -104,8 +108,8 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         ).pack(anchor="w")
 
         # 1. Upstox Access Token
-        token_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
-        token_frame.pack(fill="x", padx=pad_x, pady=8)
+        token_frame = ctk.CTkFrame(self.scroll_container, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        token_frame.pack(fill="x", pady=8)
 
         token_lbl = ctk.CTkLabel(
             token_frame,
@@ -162,8 +166,8 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         paste_btn.pack(side="left")
 
         # 2. Excel Workbook File Path
-        excel_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
-        excel_frame.pack(fill="x", padx=pad_x, pady=8)
+        excel_frame = ctk.CTkFrame(self.scroll_container, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        excel_frame.pack(fill="x", pady=8)
 
         excel_lbl = ctk.CTkLabel(
             excel_frame,
@@ -211,8 +215,8 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         self.sheet_entry.insert(0, settings.excel_sheet_name)
 
         # 3. Google Sheets Webhook URL
-        gsheet_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
-        gsheet_frame.pack(fill="x", padx=pad_x, pady=8)
+        gsheet_frame = ctk.CTkFrame(self.scroll_container, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        gsheet_frame.pack(fill="x", pady=8)
 
         gsheet_lbl = ctk.CTkLabel(
             gsheet_frame,
@@ -297,9 +301,126 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         )
         mask_desc.pack(anchor="w", padx=(28, 0), pady=(2, 0))
 
-        # 4. Debug Console Option (Windows)
-        debug_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
-        debug_frame.pack(fill="x", padx=pad_x, pady=8)
+        # 4. Audio Chimes & Price Alerts Card
+        sound_frame = ctk.CTkFrame(self.scroll_container, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        sound_frame.pack(fill="x", pady=8)
+
+        sound_header_row = ctk.CTkFrame(sound_frame, fg_color="transparent")
+        sound_header_row.pack(fill="x", padx=12, pady=(10, 4))
+
+        sound_lbl = ctk.CTkLabel(
+            sound_header_row,
+            text="Audio Chimes & Price Alerts:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#FFFFFF",
+        )
+        sound_lbl.pack(side="left")
+
+        test_sound_btn = ctk.CTkButton(
+            sound_header_row,
+            text="🔊 Test Bell Sound",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            width=135,
+            height=26,
+            fg_color="#18181B",
+            hover_color="#27272A",
+            border_color="#3F3F46",
+            border_width=1,
+            text_color="#F4F4F5",
+            command=self._test_bell_sound,
+        )
+        test_sound_btn.pack(side="right")
+
+        self.sound_master_var = ctk.BooleanVar(value=settings.sound_enabled)
+        master_switch = ctk.CTkSwitch(
+            sound_frame,
+            text="Master Audio Alerts (Enable/Disable all sound)",
+            variable=self.sound_master_var,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#FFFFFF",
+            progress_color="#08B6DE",
+        )
+        master_switch.pack(anchor="w", padx=14, pady=(4, 6))
+
+        alerts_row = ctk.CTkFrame(sound_frame, fg_color="transparent")
+        alerts_row.pack(fill="x", padx=14, pady=(2, 6))
+
+        self.price_alerts_var = ctk.BooleanVar(value=settings.sound_price_alerts_enabled)
+        alerts_switch = ctk.CTkSwitch(
+            alerts_row,
+            text="2-Stage Price Alerts (Approaching + Target Hit)",
+            variable=self.price_alerts_var,
+            font=ctk.CTkFont(size=12),
+            text_color="#F4F4F5",
+            progress_color="#08B6DE",
+        )
+        alerts_switch.pack(side="left")
+
+        prox_label = ctk.CTkLabel(alerts_row, text="Buffer:", font=ctk.CTkFont(size=11), text_color="#A1A1AA")
+        prox_label.pack(side="left", padx=(18, 4))
+
+        self.prox_entry = ctk.CTkEntry(
+            alerts_row,
+            width=55,
+            height=24,
+            font=ctk.CTkFont(size=11),
+            fg_color="#08080A",
+            border_color="#27272A",
+            text_color="#FFFFFF",
+        )
+        self.prox_entry.pack(side="left")
+        self.prox_entry.insert(0, f"{settings.alert_proximity_pct:.2f}")
+
+        prox_unit = ctk.CTkLabel(alerts_row, text="%", font=ctk.CTkFont(size=11), text_color="#A1A1AA")
+        prox_unit.pack(side="left", padx=(4, 0))
+
+        chk_container = ctk.CTkFrame(sound_frame, fg_color="transparent")
+        chk_container.pack(fill="x", padx=14, pady=(0, 10))
+
+        self.auto_bst_var = ctk.BooleanVar(value=settings.alert_auto_bst_enabled)
+        self.auto_bst_chk = ctk.CTkCheckBox(
+            chk_container,
+            text="Auto-Monitor BST Sheet Targets (TGT1, TGT2, TGT3 & SL)",
+            variable=self.auto_bst_var,
+            font=ctk.CTkFont(size=12),
+            text_color="#F4F4F5",
+            fg_color="#3B82F6",
+        )
+        self.auto_bst_chk.pack(anchor="w", pady=3)
+
+        auto_bst_sub = ctk.CTkLabel(
+            chk_container,
+            text="Automatically tracks targets calculated in Excel trial.xlsx without typing them manually.",
+            font=ctk.CTkFont(size=10),
+            text_color="#94A3B8",
+        )
+        auto_bst_sub.pack(anchor="w", padx=(28, 0), pady=(0, 4))
+
+        self.signals_var = ctk.BooleanVar(value=settings.sound_signals_enabled)
+        self.signals_chk = ctk.CTkCheckBox(
+            chk_container,
+            text="Trading Signal Bells (Distinct chimes when SUPER/INTRA turns BUY or SELL)",
+            variable=self.signals_var,
+            font=ctk.CTkFont(size=12),
+            text_color="#F4F4F5",
+            fg_color="#3B82F6",
+        )
+        self.signals_chk.pack(anchor="w", pady=3)
+
+        self.system_chimes_var = ctk.BooleanVar(value=settings.sound_system_enabled)
+        self.system_chimes_chk = ctk.CTkCheckBox(
+            chk_container,
+            text="System Chimes (Feed Connected, Disconnected, Script Added)",
+            variable=self.system_chimes_var,
+            font=ctk.CTkFont(size=12),
+            text_color="#F4F4F5",
+            fg_color="#3B82F6",
+        )
+        self.system_chimes_chk.pack(anchor="w", pady=3)
+
+        # 5. Debug Console Option (Windows)
+        debug_frame = ctk.CTkFrame(self.scroll_container, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        debug_frame.pack(fill="x", pady=8)
 
         debug_row = ctk.CTkFrame(debug_frame, fg_color="transparent")
         debug_row.pack(fill="x", padx=12, pady=10)
@@ -451,6 +572,13 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
                 parent=self,
             )
 
+    def _test_bell_sound(self):
+        try:
+            from upstox_bridge.core.sound_engine import SoundEvent, sound_engine
+            sound_engine.play(SoundEvent.TARGET_HIT, cooldown_sec=0.0)
+        except Exception as e:
+            logger.debug(f"Test bell sound error: {e}")
+
     def _on_debug_switch_toggled(self):
         is_on = bool(self.debug_switch.get())
         self.debug_switch.configure(text="Enabled" if is_on else "Hidden")
@@ -473,6 +601,31 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         os.environ["UPSTOX_ACCESS_TOKEN"] = token_val
         os.environ["GOOGLE_SHEET_WEBHOOK_URL"] = gsheet_val
         os.environ["GSHEET_PUBLISH_MODE"] = publish_mode
+
+        # Audio & Alerts settings
+        sound_master = "true" if self.sound_master_var.get() else "false"
+        sound_price_alerts = "true" if self.price_alerts_var.get() else "false"
+        sound_signals = "true" if self.signals_var.get() else "false"
+        sound_system = "true" if self.system_chimes_var.get() else "false"
+        auto_bst = "true" if self.auto_bst_var.get() else "false"
+        try:
+            prox_val = float(self.prox_entry.get().strip() or "0.25")
+        except ValueError:
+            prox_val = 0.25
+
+        update_env_variable("SOUND_ENABLED", sound_master, env_path)
+        update_env_variable("SOUND_PRICE_ALERTS_ENABLED", sound_price_alerts, env_path)
+        update_env_variable("SOUND_SIGNALS_ENABLED", sound_signals, env_path)
+        update_env_variable("SOUND_SYSTEM_ENABLED", sound_system, env_path)
+        update_env_variable("ALERT_AUTO_BST_ENABLED", auto_bst, env_path)
+        update_env_variable("ALERT_PROXIMITY_PCT", str(prox_val), env_path)
+
+        settings.sound_enabled = self.sound_master_var.get()
+        settings.sound_price_alerts_enabled = self.price_alerts_var.get()
+        settings.sound_signals_enabled = self.signals_var.get()
+        settings.sound_system_enabled = self.system_chimes_var.get()
+        settings.alert_auto_bst_enabled = self.auto_bst_var.get()
+        settings.alert_proximity_pct = prox_val
 
         # Update runtime settings
         settings.config.setdefault("excel", {})["file_path"] = excel_path_val

@@ -49,6 +49,8 @@ hiddenimports = [
     "protobuf",
     "dotenv",
     "psutil",
+    "upstox_bridge.core.sound_engine",
+    "upstox_bridge.core.alert_engine",
     "upstox_bridge.gui.web_dashboard",
 ]
 

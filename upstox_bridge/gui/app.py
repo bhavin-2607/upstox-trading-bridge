@@ -156,12 +156,22 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         self._log_filter = "ALL"
         self._prev_watchlist_ltp: Dict[str, float] = {}
 
+        # Alert Engine & Sound Subsystem
+        from upstox_bridge.core.alert_engine import alert_engine
+        self.alert_engine = alert_engine
+        self.alert_engine.add_listener(self._on_price_alert_event)
+        self.alert_engine.add_signal_listener(self._on_trading_signal_event)
+        self._toast_timer_id = None
+        self._alert_chip_labels: Dict[str, Any] = {}
+
         # Build UI components
+        self._build_toast_banner()
         self._build_header_cockpit()
         self._build_quick_add_omnibar()
         self._build_mini_watchlist_strip()
         self._build_status_cards()
         self._build_control_panel()
+        self._build_price_alerts_bar()
         self._build_activity_console()
 
         # Initialize System Tray
@@ -223,12 +233,65 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                 pass
 
     # =========================================================================
-    # UI CONSTRUCTION — HEADER COCKPIT
+    # UI CONSTRUCTION — TOAST BANNER & HEADER COCKPIT
     # =========================================================================
+
+    def _build_toast_banner(self):
+        """Construct high-priority floating notification banner."""
+        self.toast_banner = ctk.CTkFrame(
+            self,
+            fg_color="#0F2D1F",
+            border_color=COLOR_STATUS_BULL,
+            border_width=1,
+            corner_radius=8,
+            height=36,
+        )
+        self.lbl_toast_msg = ctk.CTkLabel(
+            self.toast_banner,
+            text="",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#FFFFFF",
+        )
+        self.lbl_toast_msg.pack(side="left", padx=12, pady=6)
+
+        btn_toast_close = ctk.CTkButton(
+            self.toast_banner,
+            text="✕",
+            width=22,
+            height=22,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            fg_color="transparent",
+            hover_color="#1c4832",
+            text_color="#A1A1AA",
+            command=self._hide_toast,
+        )
+        btn_toast_close.pack(side="right", padx=8)
+
+    def _show_toast(self, title: str, message: str, color: str = COLOR_STATUS_BULL):
+        """Display an animated/floating visual alert banner with auto-dismiss."""
+        bg_col = "#042314" if color in (COLOR_STATUS_BULL, "#059669") else ("#261a06" if color == COLOR_BRAND_AMBER else "#051b24")
+        self.toast_banner.configure(fg_color=bg_col, border_color=color)
+        self.lbl_toast_msg.configure(text=f"{title}: {message}", text_color="#FFFFFF")
+        if hasattr(self, "header_cockpit_frame"):
+            self.toast_banner.pack(fill="x", padx=20, pady=(6, 0), before=self.header_cockpit_frame)
+        else:
+            self.toast_banner.pack(fill="x", padx=20, pady=(6, 0))
+
+        if self._toast_timer_id:
+            try:
+                self.after_cancel(self._toast_timer_id)
+            except Exception:
+                pass
+        self._toast_timer_id = self.after(6000, self._hide_toast)
+
+    def _hide_toast(self):
+        """Dismiss active toast banner."""
+        self.toast_banner.pack_forget()
 
     def _build_header_cockpit(self):
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
         header_frame.pack(fill="x", padx=20, pady=(14, 6))
+        self.header_cockpit_frame = header_frame
 
         # Title & Institutional Wordmark with brand icon
         title_col = ctk.CTkFrame(header_frame, fg_color="transparent")
@@ -763,6 +826,305 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         self.btn_open_excel.pack(side="right", padx=(0, 6), pady=8)
 
     # =========================================================================
+    # UI CONSTRUCTION — PRICE ALERTS & TARGET MONITOR
+    # =========================================================================
+
+    def _build_price_alerts_bar(self):
+        self.alert_box = ctk.CTkFrame(
+            self,
+            fg_color=COLOR_CARD_SURFACE,
+            border_color=COLOR_CARD_BORDER,
+            border_width=1,
+            corner_radius=10,
+        )
+        self.alert_box.pack(fill="x", padx=20, pady=(2, 6))
+
+        # Top row: Header, Summary Badge, and Clear Action
+        hdr_row = ctk.CTkFrame(self.alert_box, fg_color="transparent")
+        hdr_row.pack(fill="x", padx=12, pady=(6, 4))
+
+        lbl_hdr = ctk.CTkLabel(
+            hdr_row,
+            text="🔔 PRICE ALERTS & TARGET MONITOR",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=COLOR_BRAND_AMBER,
+        )
+        lbl_hdr.pack(side="left", padx=(0, 10))
+
+        self.lbl_alert_summary = ctk.CTkLabel(
+            hdr_row,
+            text="0 Active",
+            font=ctk.CTkFont(size=10, weight="bold"),
+            text_color=COLOR_TEXT_SECONDARY,
+        )
+        self.lbl_alert_summary.pack(side="left")
+
+        self.btn_clear_triggered = ctk.CTkButton(
+            hdr_row,
+            text="Clear Hit Alerts",
+            font=ctk.CTkFont(size=10),
+            fg_color="#16171B",
+            hover_color="#23252E",
+            border_color="#27272A",
+            border_width=1,
+            text_color=COLOR_TEXT_SECONDARY,
+            height=22,
+            width=100,
+            command=self._on_clear_triggered_alerts,
+        )
+        self.btn_clear_triggered.pack(side="right")
+
+        # Input Row
+        input_row = ctk.CTkFrame(self.alert_box, fg_color="transparent")
+        input_row.pack(fill="x", padx=12, pady=(0, 6))
+
+        self.alert_sym_entry = ctk.CTkEntry(
+            input_row,
+            placeholder_text="Symbol (e.g. RELIANCE, NIFTY 25500 CE)...",
+            font=ctk.CTkFont(size=11),
+            fg_color=COLOR_BG_SUBTLE,
+            border_color="#27272A",
+            text_color=COLOR_TEXT_PRIMARY,
+            height=28,
+            width=200,
+        )
+        self.alert_sym_entry.pack(side="left", padx=(0, 6))
+
+        self.alert_price_entry = ctk.CTkEntry(
+            input_row,
+            placeholder_text="Target (₹)...",
+            font=ctk.CTkFont(size=11),
+            fg_color=COLOR_BG_SUBTLE,
+            border_color="#27272A",
+            text_color=COLOR_TEXT_PRIMARY,
+            height=28,
+            width=120,
+        )
+        self.alert_price_entry.pack(side="left", padx=(0, 6))
+        self.alert_price_entry.bind("<Return>", lambda _: self._on_set_alert())
+
+        self.alert_cond_var = ctk.StringVar(value="Above (>=)")
+        self.alert_cond_menu = ctk.CTkOptionMenu(
+            input_row,
+            variable=self.alert_cond_var,
+            values=["Above (>=)", "Below (<=)"],
+            font=ctk.CTkFont(size=11),
+            fg_color="#16171B",
+            button_color="#27272A",
+            text_color="#FFFFFF",
+            height=28,
+            width=115,
+        )
+        self.alert_cond_menu.pack(side="left", padx=(0, 6))
+
+        buf_lbl = ctk.CTkLabel(input_row, text="Buffer:", font=ctk.CTkFont(size=10), text_color="#A1A1AA")
+        buf_lbl.pack(side="left", padx=(2, 2))
+
+        self.alert_prox_entry = ctk.CTkEntry(
+            input_row,
+            font=ctk.CTkFont(size=11),
+            fg_color=COLOR_BG_SUBTLE,
+            border_color="#27272A",
+            text_color=COLOR_TEXT_PRIMARY,
+            height=28,
+            width=50,
+        )
+        self.alert_prox_entry.pack(side="left", padx=(0, 2))
+        self.alert_prox_entry.insert(0, f"{settings.alert_proximity_pct:.2f}")
+
+        buf_pct_lbl = ctk.CTkLabel(input_row, text="%", font=ctk.CTkFont(size=10), text_color="#A1A1AA")
+        buf_pct_lbl.pack(side="left", padx=(0, 8))
+
+        self.btn_set_alert = ctk.CTkButton(
+            input_row,
+            text="🔔 Set Alert",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color="#F5A623",
+            hover_color="#d98200",
+            text_color="#000000",
+            height=28,
+            width=95,
+            command=self._on_set_alert,
+        )
+        self.btn_set_alert.pack(side="left")
+
+        # Active Alerts Rack
+        self.alerts_rack = ctk.CTkScrollableFrame(
+            self.alert_box,
+            fg_color="transparent",
+            height=42,
+            orientation="horizontal",
+        )
+        self.alerts_rack.pack(fill="x", padx=8, pady=(0, 6))
+
+        self._render_alert_chips()
+
+    def _on_set_alert(self):
+        sym = self.alert_sym_entry.get().strip().upper()
+        price_str = self.alert_price_entry.get().strip()
+        cond_str = self.alert_cond_var.get()
+        condition = "ABOVE" if "Above" in cond_str else "BELOW"
+        prox_str = self.alert_prox_entry.get().strip()
+
+        if not sym:
+            self._show_toast("⚠️ Invalid Alert", "Please enter a symbol name (e.g. RELIANCE)", COLOR_BRAND_AMBER)
+            return
+        try:
+            target_p = float(price_str)
+            if target_p <= 0:
+                raise ValueError
+        except ValueError:
+            self._show_toast("⚠️ Invalid Price", "Please enter a valid target price greater than 0", COLOR_BRAND_AMBER)
+            return
+
+        try:
+            prox_val = float(prox_str) if prox_str else settings.alert_proximity_pct
+        except ValueError:
+            prox_val = settings.alert_proximity_pct
+
+        cur_ltp = None
+        if self.runner and self.runner.market_store:
+            quote = self.runner.market_store.get_quote_by_symbol(sym)
+            if quote and quote.get("ltp"):
+                cur_ltp = float(quote["ltp"])
+
+        alert = self.alert_engine.add_alert(
+            symbol=sym,
+            target_price=target_p,
+            condition=condition,
+            proximity_pct=prox_val,
+            current_ltp=cur_ltp,
+        )
+        self.alert_price_entry.delete(0, "end")
+        self._render_alert_chips()
+        self._show_toast(
+            "🔔 Alert Set",
+            f"Monitoring {alert.symbol} {alert.condition} ₹{alert.target_price:,.2f} (Buffer: {alert.proximity_pct}%)",
+            COLOR_BRAND_CYAN,
+        )
+
+    def _on_delete_alert(self, alert_id: str):
+        self.alert_engine.remove_alert(alert_id)
+        self._render_alert_chips()
+
+    def _on_clear_triggered_alerts(self):
+        count = self.alert_engine.clear_triggered_alerts()
+        self._render_alert_chips()
+        if count:
+            self._show_toast("Cleared", f"Cleared {count} triggered alert(s).", COLOR_BRAND_CYAN)
+
+    def _render_alert_chips(self):
+        for child in self.alerts_rack.winfo_children():
+            child.destroy()
+        self._alert_chip_labels.clear()
+
+        alerts = self.alert_engine.get_alerts()
+        active_count = sum(1 for a in alerts if a.status != "TRIGGERED")
+        hit_count = sum(1 for a in alerts if a.status == "TRIGGERED")
+        self.lbl_alert_summary.configure(text=f"{active_count} Active | {hit_count} Hit")
+
+        if not alerts:
+            no_lbl = ctk.CTkLabel(
+                self.alerts_rack,
+                text="No active alerts. Enter a symbol and target above to begin audio monitoring.",
+                font=ctk.CTkFont(size=10),
+                text_color="#71717A",
+            )
+            no_lbl.pack(side="left", padx=4, pady=2)
+            return
+
+        for alert in reversed(alerts):
+            if alert.status == "TRIGGERED":
+                border_c = COLOR_STATUS_BULL
+                fg_c = "#042314"
+                status_icon = "🎯 HIT"
+            elif alert.status == "APPROACHING":
+                border_c = COLOR_BRAND_AMBER
+                fg_c = "#261a06"
+                status_icon = "⚠️ NEAR"
+            else:
+                border_c = "#27272A"
+                fg_c = "#101114"
+                status_icon = "🔔"
+
+            chip = ctk.CTkFrame(
+                self.alerts_rack,
+                fg_color=fg_c,
+                border_color=border_c,
+                border_width=1,
+                corner_radius=6,
+                height=28,
+            )
+            chip.pack(side="left", padx=3, pady=2)
+
+            cond_sym = "≥" if alert.condition == "ABOVE" else "≤"
+            lbl_txt = f"{status_icon} {alert.symbol} {cond_sym} ₹{alert.target_price:,.2f}"
+
+            if self.runner and self.runner.market_store and alert.status != "TRIGGERED":
+                q = self.runner.market_store.get_quote_by_symbol(alert.symbol)
+                if q and q.get("ltp"):
+                    cur_p = float(q["ltp"])
+                    dist_pct = abs(cur_p - alert.target_price) / alert.target_price * 100.0
+                    lbl_txt += f" ({dist_pct:.1f}% away)"
+
+            c_lbl = ctk.CTkLabel(
+                chip,
+                text=lbl_txt,
+                font=ctk.CTkFont(size=10, weight="bold"),
+                text_color="#FFFFFF" if alert.status != "APPROACHING" else COLOR_BRAND_AMBER,
+            )
+            c_lbl.pack(side="left", padx=(6, 4), pady=2)
+            self._alert_chip_labels[alert.id] = (c_lbl, alert)
+
+            btn_del = ctk.CTkButton(
+                chip,
+                text="✕",
+                width=16,
+                height=16,
+                font=ctk.CTkFont(size=9, weight="bold"),
+                fg_color="transparent",
+                hover_color="#e11d48",
+                text_color="#A1A1AA",
+                command=lambda aid=alert.id: self._on_delete_alert(aid),
+            )
+            btn_del.pack(side="left", padx=(0, 4), pady=2)
+
+    def _on_price_alert_event(self, alert, event_type: str, ltp: float):
+        """Thread-safe handler dispatched by AlertEngine when price alerts trigger."""
+        def _gui():
+            self._render_alert_chips()
+            cond_sym = "≥" if alert.condition == "ABOVE" else "≤"
+            if event_type == "TRIGGERED":
+                title = f"🎯 TARGET HIT [{alert.symbol}]"
+                msg = f"Price reached ₹{ltp:,.2f} ({cond_sym} Target ₹{alert.target_price:,.2f})!"
+                col = COLOR_STATUS_BULL
+            elif event_type == "APPROACHING":
+                title = f"⚠️ APPROACHING TARGET [{alert.symbol}]"
+                msg = f"Current LTP is ₹{ltp:,.2f} — nearing Target ₹{alert.target_price:,.2f}!"
+                col = COLOR_BRAND_AMBER
+            else:
+                title = f"🔔 ALERT [{alert.symbol}]"
+                msg = f"Price update ₹{ltp:,.2f}"
+                col = COLOR_BRAND_CYAN
+
+            self._show_toast(title, msg, col)
+            self._refresh_logs_display()
+
+        self.after(0, _gui)
+
+    def _on_trading_signal_event(self, symbol: str, sig_type: str, sig_val: str):
+        """Thread-safe handler for BST SUPER and INTRA signal changes."""
+        def _gui():
+            color = COLOR_STATUS_BULL if "BUY" in sig_val else COLOR_STATUS_BEAR
+            icon = "🟢" if "BUY" in sig_val else "🔴"
+            title = f"{icon} [{sig_type} SIGNAL] {symbol}"
+            msg = f"Signal turned {sig_val}!"
+            self._show_toast(title, msg, color)
+            self._refresh_logs_display()
+
+        self.after(0, _gui)
+
+    # =========================================================================
     # UI CONSTRUCTION — ACTIVITY CONSOLE WITH LOG FILTER TABS
     # =========================================================================
 
@@ -863,7 +1225,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                 filtered.append(line)
             elif self._log_filter == "SYNC" and any(k in line for k in ("BSTSyncer", "Excel", "GoogleSheet", "sync", "Row")):
                 filtered.append(line)
-            elif self._log_filter == "ALERTS" and any(k in line for k in ("WARNING", "ERROR", "failed", "Exception", "alert")):
+            elif self._log_filter == "ALERTS" and any(k in line for k in ("WARNING", "ERROR", "failed", "Exception", "alert", "ALERT", "TARGET", "APPROACHING", "STOP-LOSS", "SIGNAL")):
                 filtered.append(line)
 
         self.log_textbox.delete("1.0", "end")
@@ -1078,6 +1440,18 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                             ui_card["card"].configure(fg_color=flash_color)
                             self.after(300, lambda c=ui_card["card"]: c.configure(fg_color=COLOR_CARD_SURFACE))
                         ui_card["last_ltp"] = ltp
+
+                # Update live distance for active alert chips
+                if hasattr(self, "_alert_chip_labels") and self._alert_chip_labels:
+                    for aid, (lbl, alert) in list(self._alert_chip_labels.items()):
+                        if alert.status != "TRIGGERED":
+                            q = store.get_quote_by_symbol(alert.symbol)
+                            if q and q.get("ltp"):
+                                cur_p = float(q["ltp"])
+                                dist_pct = abs(cur_p - alert.target_price) / alert.target_price * 100.0
+                                cond_sym = "≥" if alert.condition == "ABOVE" else "≤"
+                                st_icon = "⚠️ NEAR" if alert.status == "APPROACHING" else "🔔"
+                                lbl.configure(text=f"{st_icon} {alert.symbol} {cond_sym} ₹{alert.target_price:,.2f} ({dist_pct:.1f}% away)")
             else:
                 if not self.btn_live.cget("state") == "disabled":
                     self.card_feed["status"].configure(text="STOPPED", text_color=COLOR_TEXT_SECONDARY)
@@ -1099,7 +1473,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                             to_append.append(line)
                         elif self._log_filter == "SYNC" and any(k in line for k in ("BSTSyncer", "Excel", "GoogleSheet", "sync", "Row")):
                             to_append.append(line)
-                        elif self._log_filter == "ALERTS" and any(k in line for k in ("WARNING", "ERROR", "failed", "Exception", "alert")):
+                        elif self._log_filter == "ALERTS" and any(k in line for k in ("WARNING", "ERROR", "failed", "Exception", "alert", "ALERT", "TARGET", "APPROACHING", "STOP-LOSS", "SIGNAL")):
                             to_append.append(line)
 
                     if to_append:

@@ -26,6 +26,7 @@ data/*.tmp.xlsx
 data/instruments_master.json
 data/instruments_master.json.gz
 data/historical_prev_stats_cache.json
+data/price_alerts.json
 
 # macOS system files
 .DS_Store
