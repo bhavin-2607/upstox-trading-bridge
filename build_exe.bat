@@ -32,6 +32,10 @@ echo [*] Checking PyInstaller...
 
 REM 3. Compile Standalone Single-File Executable
 echo.
+echo [*] Closing any running instances of BSATradingBridge to release file lock...
+taskkill /F /IM BSATradingBridge.exe >nul 2>&1
+timeout /t 1 /nobreak >nul 2>&1
+
 echo [*] Compiling Standalone Windows Single-File Executable via PyInstaller...
 echo     (Embedding Python runtime, python3XX.dll, and all dependencies into one file)
 echo.
