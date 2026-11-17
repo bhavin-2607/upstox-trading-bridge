@@ -20,17 +20,18 @@
 
 ## 2. Key Safeguards & Mechanisms
 
-1. **Column A Immunity**:
-   - Continuous 3-second live price matrix sync (`bst_matrix`) writes strictly to **Columns 2 to 49 (Columns B to AW)**.
-   - Column A (`[SCRIPT]`) is **never touched or overwritten** by live ticks, allowing users to type new scripts or edit Column A without interference.
-2. **Bidirectional Script Synchronization**:
-   - **Adding/Editing in Google Sheet**: Scanning runs every ~9s (`sync_scripts: true`). Google Apps Script reads Column A *first* before any cell writes, forwards the new script to Python, which adds it to Excel, subscribes to Upstox, and streams live prices.
-   - **Adding/Editing in Excel**: Detected by `scan_scripts()`, updates Upstox subscriptions, and sends `a_data` to Google Sheet.
-   - **Deletion Handling**: Removing a script from either Excel or Google Sheet clears the row without causing resurrection loops.
-3. **Master Template & Self-Healing Restore**:
-   - `templates/BST_Master_Template.xlsx` contains the pristine 232-script layout with all formulas.
-   - Restore via GUI: Settings > "⚡️ Restore BST Template to Google Sheet".
-   - Restore via CLI: `python main.py restore-gsheet --mode values`.
+1. **Dual Google Sheets Publishing Modes**:
+   - **Direct Raw Prices Mode (`publish_mode = "formulas"`)**: Pushes only live price columns (LTP, Open, High, Low, P.Close in Cols C-G, and Volume in Col AF) = ~1,482 cells. Extremely lightweight and updates in <1.5s. Ideal for direct connectivity and personal sheets with formulas already in place.
+   - **Values-Only Formula Masking Mode (`publish_mode = "values"`)**: Pushes evaluated matrix (Columns B to AW) = ~11,856 cells. Protects proprietary formulas from public viewers. Protected by intelligent dirty-checking (skips 95% of unchanged ticks) and 35s HTTP timeout with connection pooling.
+2. **Column A Immunity**:
+   - Continuous live sync writes strictly to target data columns. Column A (`[SCRIPT]`) is never overwritten by price ticks, allowing users to type new scripts freely.
+3. **Bidirectional Script Synchronization**:
+   - Adding/editing in Google Sheet or Excel is dynamically detected and subscribed via Upstox live WebSocket feed.
+4. **Resilient Network & GUI Architecture**:
+   - Settings dialog features a permanently pinned bottom footer (`Save Changes` & `Cancel`) and scrollable container.
+   - HTTP session pooling (`requests.Session`) and exponential backoff prevent Google Apps Script queue saturation.
+5. **Sound & Custom Price Alerts**:
+   - Preserved on dedicated branch `feat/sound-alerts` for future integration.
 
 ---
 
