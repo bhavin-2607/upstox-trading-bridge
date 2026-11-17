@@ -125,63 +125,6 @@ class Settings:
         """Publish mode for Google Sheets: 'values' (Formula Masking) or 'formulas' (Legacy)."""
         return os.getenv("GSHEET_PUBLISH_MODE", "values").strip().lower()
 
-    # Sound & Audio Alert settings
-    @property
-    def sound_enabled(self) -> bool:
-        val = os.getenv("SOUND_ENABLED", "true").strip().lower()
-        return val in ("1", "true", "yes", "on")
-
-    @sound_enabled.setter
-    def sound_enabled(self, val: bool) -> None:
-        os.environ["SOUND_ENABLED"] = "true" if val else "false"
-
-    @property
-    def sound_price_alerts_enabled(self) -> bool:
-        val = os.getenv("SOUND_PRICE_ALERTS_ENABLED", "true").strip().lower()
-        return val in ("1", "true", "yes", "on")
-
-    @sound_price_alerts_enabled.setter
-    def sound_price_alerts_enabled(self, val: bool) -> None:
-        os.environ["SOUND_PRICE_ALERTS_ENABLED"] = "true" if val else "false"
-
-    @property
-    def sound_signals_enabled(self) -> bool:
-        val = os.getenv("SOUND_SIGNALS_ENABLED", "true").strip().lower()
-        return val in ("1", "true", "yes", "on")
-
-    @sound_signals_enabled.setter
-    def sound_signals_enabled(self, val: bool) -> None:
-        os.environ["SOUND_SIGNALS_ENABLED"] = "true" if val else "false"
-
-    @property
-    def sound_system_enabled(self) -> bool:
-        val = os.getenv("SOUND_SYSTEM_ENABLED", "true").strip().lower()
-        return val in ("1", "true", "yes", "on")
-
-    @sound_system_enabled.setter
-    def sound_system_enabled(self, val: bool) -> None:
-        os.environ["SOUND_SYSTEM_ENABLED"] = "true" if val else "false"
-
-    @property
-    def alert_proximity_pct(self) -> float:
-        try:
-            return float(os.getenv("ALERT_PROXIMITY_PCT", "0.25"))
-        except (ValueError, TypeError):
-            return 0.25
-
-    @alert_proximity_pct.setter
-    def alert_proximity_pct(self, val: float) -> None:
-        os.environ["ALERT_PROXIMITY_PCT"] = str(val)
-
-    @property
-    def alert_auto_bst_enabled(self) -> bool:
-        val = os.getenv("ALERT_AUTO_BST_ENABLED", "false").strip().lower()
-        return val in ("1", "true", "yes", "on")
-
-    @alert_auto_bst_enabled.setter
-    def alert_auto_bst_enabled(self, val: bool) -> None:
-        os.environ["ALERT_AUTO_BST_ENABLED"] = "true" if val else "false"
-
     # Excel settings
     @property
     def excel_enabled(self) -> bool:

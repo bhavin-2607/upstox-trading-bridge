@@ -39,44 +39,17 @@
 | File | Purpose |
 | :--- | :--- |
 | `upstox_bridge/destinations/bst_syncer.py` | In-place Excel syncer (`xlwings` + `openpyxl` fallback), evaluated matrix extractor |
-| `upstox_bridge/core/sound_engine.py` | Low-latency audio chime engine (synthesized 16-bit PCM WAVs, non-blocking queue) |
-| `upstox_bridge/core/alert_engine.py` | 2-Stage price alert engine (Approaching & Hit states, anti-spam hysteresis, JSON persistence) |
 | `upstox_bridge/destinations/gsheet_webhook.py` | Google Apps Script webhook integration, slice & matrix pusher |
 | `scripts/google_apps_script.js` | Google Apps Script webhook endpoint for Google Sheets |
-| `upstox_bridge/gui/app.py` | Main Cockpit with Quick Price Alerts bar, live distance chips, and floating toast notifications |
-| `upstox_bridge/gui/settings_dialog.py` | Settings GUI with formula masking, audio chimes & price alert controls, and test bell button |
+| `upstox_bridge/gui/settings_dialog.py` | Settings GUI with formula masking toggle and restore action |
 | `upstox_bridge/core/config.py` | Application configuration & `.env` manager |
 | `templates/BST_Master_Template.xlsx` | Master template with 232 scripts, headers, and formulas |
-| `dist/BSATradingBridge` | Standalone compiled executable (30MB single binary) |
-| `tests/` | Complete 54-test automated unit test suite (100% passing) |
+| `dist/BSATradingBridge` | Standalone compiled executable |
+| `tests/` | Complete 45-test automated unit test suite |
 
 ---
 
-## 4. Audio Alerts & 2-Stage Price Alert Engine
-
-### Two-Stage Price Alert Lifecycle
-1. **Stage 1: Approaching (`APPROACHING`)**
-   - Fires when stock price comes within **0.25%** (user-configurable buffer) of target.
-   - Chimes a gentle dual-tone warning (`D5 -> A5`) and displays an amber toast badge.
-2. **Stage 2: Target Hit (`TRIGGERED`)**
-   - Fires when stock touches or crosses target ($\ge$ for `ABOVE`, $\le$ for `BELOW`).
-   - Rings a bright institutional chime (`A5 + E6 harmonics`) and displays a green toast banner.
-3. **Stop-Loss Breach**
-   - Rings an urgent lower warning chime (`F4 -> C4`) with a crimson badge.
-4. **Trading Signals (SUPER & INTRA)**
-   - Distinct ascending arpeggio on `BUY`, descending chime on `SELL`.
-5. **System Chimes**
-   - Confirmation bells on WebSocket connect, disconnect, and script additions.
-
-### Anti-Spam & Hysteresis
-- Triggered alerts fire strictly once and never spam if the price oscillates across the target line.
-- Approaching alerts feature a 1.5x buffer deadband to prevent rapid toggling near threshold boundaries.
-- User custom alerts persist automatically in `data/price_alerts.json` across app restarts.
-- Auto-monitoring for BST sheet targets (`TGT1`, `TGT2`, `TGT3`, `SL`) is disabled by default and can be enabled via Settings.
-
----
-
-## 5. How to Resume This Session
+## 4. How to Resume This Session
 
 - **Using Antigravity CLI (`agy`)**:
   ```bash

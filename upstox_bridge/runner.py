@@ -15,7 +15,6 @@ from upstox_bridge.auth.oauth import UpstoxAuthManager
 from upstox_bridge.auth.totp_login import attempt_totp_login
 from upstox_bridge.core.config import settings
 from upstox_bridge.core.market_store import MarketStore
-from upstox_bridge.core.sound_engine import SoundEvent, sound_engine
 from upstox_bridge.destinations.bst_syncer import BSTSyncer
 from upstox_bridge.destinations.excel_syncer import ExcelSyncer
 from upstox_bridge.destinations.gsheet_webhook import GoogleSheetWebhookSyncer
@@ -129,10 +128,7 @@ class BridgeRunner:
     def quick_add_script(self, raw_symbol: str) -> Tuple[bool, str, int]:
         """Add a script directly to the active BST syncer and live stream."""
         if self.bst_syncer:
-            res = self.bst_syncer.append_script(raw_symbol)
-            if res[0]:
-                sound_engine.play(SoundEvent.SCRIPT_ADDED)
-            return res
+            return self.bst_syncer.append_script(raw_symbol)
         return False, "BST syncer is not active", 0
 
     def on_bst_scripts_detected(self, all_keys: List[str]) -> None:
@@ -156,7 +152,6 @@ class BridgeRunner:
                 to_add = [k for k in all_keys if k not in current_keys]
                 if to_add:
                     self.streamer.subscribe(to_add)
-                    sound_engine.play(SoundEvent.SCRIPT_ADDED)
                     logger.info(f"Dynamically subscribed to {len(to_add)} newly added keys from BST sheet.")
         except Exception as e:
             logger.warning(f"Error handling detected BST scripts: {e}")
@@ -168,7 +163,6 @@ class BridgeRunner:
 
         new_keys = self.bst_syncer.inject_scripts_from_external(gsheet_scripts)
         if new_keys:
-            sound_engine.play(SoundEvent.SCRIPT_ADDED)
             logger.info(f"[Google Sheets -> Excel] Discovered {len(new_keys)} new symbol(s) added from Google Sheet: {new_keys}")
             stats = self.historical_fetcher.fetch_all(new_keys)
             for key, (ph, pl, pc) in stats.items():
@@ -328,7 +322,6 @@ class BridgeRunner:
         """Start all destinations in simulated tick mode for testing without active market session."""
         self._running = True
         self._is_simulation = True
-        sound_engine.play(SoundEvent.CONNECTED)
 
         default_base = {
             "NIFTY 50": 25300.0,

@@ -9,7 +9,6 @@ from upstox_client.feeder.market_data_streamer_v3 import MarketDataStreamerV3
 
 from upstox_bridge.core.config import settings
 from upstox_bridge.core.market_store import MarketStore
-from upstox_bridge.core.sound_engine import SoundEvent, sound_engine
 
 logger = logging.getLogger("FeedStreamer")
 
@@ -78,20 +77,17 @@ class UpstoxFeedStreamer:
     def _on_open(self, *args, **kwargs) -> None:
         self._is_connected = True
         self._set_state(self.STATE_CONNECTED)
-        sound_engine.play(SoundEvent.CONNECTED)
         logger.info(f"WebSocket connected to Upstox. Subscribed to {len(self.subscribed_keys)} instruments.")
         print(f"[OK] Connected to Upstox WebSocket feed ({len(self.subscribed_keys)} instruments subscribed).")
 
     def _on_close(self, *args, **kwargs) -> None:
         self._is_connected = False
         self._set_state(self.STATE_DISCONNECTED)
-        sound_engine.play(SoundEvent.DISCONNECTED)
         logger.warning(f"WebSocket connection closed. Args: {args}")
         print(f"[WARNING] Upstox WebSocket closed: {args}")
 
     def _on_error(self, *args, **kwargs) -> None:
         self._set_state(self.STATE_ERROR)
-        sound_engine.play(SoundEvent.DISCONNECTED)
         logger.error(f"WebSocket error: {args}")
         print(f"[ERROR] Upstox WebSocket error: {args}")
 
