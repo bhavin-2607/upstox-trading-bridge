@@ -987,6 +987,12 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             text_color=COLOR_STATUS_BULL if gsheet_active else COLOR_TEXT_SECONDARY,
         )
 
+        # Dynamically apply changes to running syncer if active
+        if hasattr(self, "runner") and self.runner and self.runner.gsheet_syncer:
+            self.runner.gsheet_syncer.publish_mode = settings.gsheet_publish_mode
+            self.runner.gsheet_syncer.webhook_url = settings.gsheet_webhook_url
+            self.runner.gsheet_syncer.sheet_name = settings.excel_sheet_name
+
     def _open_excel_file(self):
         """Launch or bring Excel workbook to the front."""
         path = settings.excel_file_path

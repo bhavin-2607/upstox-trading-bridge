@@ -30,8 +30,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         self.on_save_callback = on_save_callback
 
         self.title("BSA Trading Bridge — Settings & Credentials")
-        self.geometry("640x660")
-        self.resizable(False, False)
+        self.geometry("660x720")
+        self.minsize(580, 520)
+        self.resizable(True, True)
 
         # Apply Pure Dark Black OLED canvas styling
         self.configure(fg_color="#000000")
@@ -65,18 +66,60 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
     def _build_ui(self):
         pad_x = 20
 
+        # 1. FIXED BOTTOM ACTION BAR (Packed first with side="bottom" so it is ALWAYS 100% visible)
+        footer_frame = ctk.CTkFrame(self, fg_color="#0A0B0E", border_color="#1E2026", border_width=1, corner_radius=0, height=64)
+        footer_frame.pack(side="bottom", fill="x")
+        footer_frame.pack_propagate(False)
+
+        btn_row = ctk.CTkFrame(footer_frame, fg_color="transparent")
+        btn_row.pack(fill="x", padx=pad_x, pady=14)
+
+        cancel_btn = ctk.CTkButton(
+            btn_row,
+            text=" Cancel",
+            image=IconManager.get_icon("clear", size=(13, 13)),
+            compound="left",
+            width=100,
+            height=36,
+            fg_color="#16171B",
+            hover_color="#23252E",
+            border_color="#27272A",
+            border_width=1,
+            text_color="#A1A1AA",
+            command=self.destroy,
+        )
+        cancel_btn.pack(side="left")
+
+        save_btn = ctk.CTkButton(
+            btn_row,
+            text=" Save Changes",
+            image=IconManager.get_icon("play", size=(13, 13)),
+            compound="left",
+            width=140,
+            height=36,
+            fg_color="#08B6DE",
+            hover_color="#0693b3",
+            text_color="#FFFFFF",
+            command=self._save_settings,
+        )
+        save_btn.pack(side="right")
+
+        # 2. SCROLLABLE FORM CONTAINER (fills everything above the fixed bottom bar)
+        scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        scroll.pack(fill="both", expand=True, padx=pad_x, pady=(12, 0))
+
         # Title
         title_label = ctk.CTkLabel(
-            self,
+            scroll,
             text="Settings & API Credentials",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color="#FFFFFF",
         )
-        title_label.pack(padx=pad_x, pady=(16, 6), anchor="w")
+        title_label.pack(padx=0, pady=(4, 6), anchor="w")
 
         # Official Brand Endorsement Card
-        endorse_frame = ctk.CTkFrame(self, fg_color="#0B1933", border_color="#1687E8", border_width=1, corner_radius=10)
-        endorse_frame.pack(fill="x", padx=pad_x, pady=(0, 10))
+        endorse_frame = ctk.CTkFrame(scroll, fg_color="#0B1933", border_color="#1687E8", border_width=1, corner_radius=10)
+        endorse_frame.pack(fill="x", padx=0, pady=(0, 10))
 
         endorse_inner = ctk.CTkFrame(endorse_frame, fg_color="transparent")
         endorse_inner.pack(fill="x", padx=12, pady=8)
@@ -104,8 +147,8 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         ).pack(anchor="w")
 
         # 1. Upstox Access Token
-        token_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
-        token_frame.pack(fill="x", padx=pad_x, pady=8)
+        token_frame = ctk.CTkFrame(scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        token_frame.pack(fill="x", padx=0, pady=8)
 
         token_lbl = ctk.CTkLabel(
             token_frame,
@@ -162,8 +205,8 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         paste_btn.pack(side="left")
 
         # 2. Excel Workbook File Path
-        excel_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
-        excel_frame.pack(fill="x", padx=pad_x, pady=8)
+        excel_frame = ctk.CTkFrame(scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        excel_frame.pack(fill="x", padx=0, pady=8)
 
         excel_lbl = ctk.CTkLabel(
             excel_frame,
@@ -211,8 +254,8 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         self.sheet_entry.insert(0, settings.excel_sheet_name)
 
         # 3. Google Sheets Webhook URL
-        gsheet_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
-        gsheet_frame.pack(fill="x", padx=pad_x, pady=8)
+        gsheet_frame = ctk.CTkFrame(scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        gsheet_frame.pack(fill="x", padx=0, pady=8)
 
         gsheet_lbl = ctk.CTkLabel(
             gsheet_frame,
@@ -289,7 +332,7 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
 
         mask_desc = ctk.CTkLabel(
             mode_row,
-            text="Hides all proprietary trading formulas from Google Sheet viewers. Excel computes signals locally and publishes evaluated values.",
+            text="Checked: Hides proprietary trading formulas. Excel computes signals locally and publishes evaluated values to Google Sheets.\nUnchecked: Publishes live raw prices (LTP, Open, High, Low, Vol) directly into the sheet with live sheet formulas.",
             font=ctk.CTkFont(size=11),
             text_color="#94A3B8",
             wraplength=480,
@@ -298,8 +341,8 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         mask_desc.pack(anchor="w", padx=(28, 0), pady=(2, 0))
 
         # 4. Debug Console Option (Windows)
-        debug_frame = ctk.CTkFrame(self, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
-        debug_frame.pack(fill="x", padx=pad_x, pady=8)
+        debug_frame = ctk.CTkFrame(scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        debug_frame.pack(fill="x", padx=0, pady=8)
 
         debug_row = ctk.CTkFrame(debug_frame, fg_color="transparent")
         debug_row.pack(fill="x", padx=12, pady=10)
@@ -332,40 +375,6 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             self.debug_switch.select()
         else:
             self.debug_switch.deselect()
-
-        # Bottom Action Buttons
-        btn_row = ctk.CTkFrame(self, fg_color="transparent")
-        btn_row.pack(fill="x", padx=pad_x, pady=(16, 16), side="bottom")
-
-        cancel_btn = ctk.CTkButton(
-            btn_row,
-            text=" Cancel",
-            image=IconManager.get_icon("clear", size=(13, 13)),
-            compound="left",
-            width=100,
-            height=36,
-            fg_color="#16171B",
-            hover_color="#23252E",
-            border_color="#27272A",
-            border_width=1,
-            text_color="#A1A1AA",
-            command=self.destroy,
-        )
-        cancel_btn.pack(side="left")
-
-        save_btn = ctk.CTkButton(
-            btn_row,
-            text=" Save Changes",
-            image=IconManager.get_icon("play", size=(13, 13)),
-            compound="left",
-            width=140,
-            height=36,
-            fg_color="#08B6DE",
-            hover_color="#0693b3",
-            text_color="#FFFFFF",
-            command=self._save_settings,
-        )
-        save_btn.pack(side="right")
 
     def _toggle_show_token(self):
         if self.token_entry.cget("show") == "*":

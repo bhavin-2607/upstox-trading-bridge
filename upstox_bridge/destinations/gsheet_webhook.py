@@ -41,7 +41,7 @@ class GoogleSheetWebhookSyncer:
         self.refresh_sec = refresh_sec if refresh_sec is not None else settings.gsheet_refresh_sec
         self.mode = mode
         self.bst_syncer = bst_syncer
-        self.publish_mode = (publish_mode or getattr(settings, "gsheet_publish_mode", "values") or "values").strip().lower()
+        self._publish_mode = (publish_mode or getattr(settings, "gsheet_publish_mode", "values") or "values").strip().lower()
         self.on_gsheet_scripts_detected = on_gsheet_scripts_detected
         self.on_gsheet_script_deleted = on_gsheet_script_deleted
 
@@ -67,6 +67,22 @@ class GoogleSheetWebhookSyncer:
             self._session.mount("http://", adapter)
         except Exception:
             pass
+
+    @property
+    def publish_mode(self) -> str:
+        return self._publish_mode
+
+    @publish_mode.setter
+    def publish_mode(self, val: str) -> None:
+        new_mode = (val or "values").strip().lower()
+        if getattr(self, "_publish_mode", None) != new_mode:
+            self._publish_mode = new_mode
+            self._last_sent_matrix = None
+            self._last_sent_cg = None
+            self._last_sent_vol = None
+            self._last_sent_a = None
+            self._sync_count = 0
+            logger.info(f"Google Sheet publish mode changed to '{new_mode}'. Caches reset for immediate sync.")
 
     def start(self) -> None:
         """Start background sync thread."""
