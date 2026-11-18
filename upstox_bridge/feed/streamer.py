@@ -79,17 +79,32 @@ class UpstoxFeedStreamer:
         self._set_state(self.STATE_CONNECTED)
         logger.info(f"WebSocket connected to Upstox. Subscribed to {len(self.subscribed_keys)} instruments.")
         print(f"[OK] Connected to Upstox WebSocket feed ({len(self.subscribed_keys)} instruments subscribed).")
+        try:
+            from upstox_bridge.core.sound_engine import SoundEvent, sound_engine
+            sound_engine.play(SoundEvent.CONNECTED)
+        except Exception:
+            pass
 
     def _on_close(self, *args, **kwargs) -> None:
         self._is_connected = False
         self._set_state(self.STATE_DISCONNECTED)
         logger.warning(f"WebSocket connection closed. Args: {args}")
         print(f"[WARNING] Upstox WebSocket closed: {args}")
+        try:
+            from upstox_bridge.core.sound_engine import SoundEvent, sound_engine
+            sound_engine.play(SoundEvent.DISCONNECTED)
+        except Exception:
+            pass
 
     def _on_error(self, *args, **kwargs) -> None:
         self._set_state(self.STATE_ERROR)
         logger.error(f"WebSocket error: {args}")
         print(f"[ERROR] Upstox WebSocket error: {args}")
+        try:
+            from upstox_bridge.core.sound_engine import SoundEvent, sound_engine
+            sound_engine.play(SoundEvent.DISCONNECTED)
+        except Exception:
+            pass
 
     def _on_message(self, message_dict: dict) -> None:
         """Process incoming decoded tick dictionary."""

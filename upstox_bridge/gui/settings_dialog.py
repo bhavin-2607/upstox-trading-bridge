@@ -340,7 +340,42 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         )
         mask_desc.pack(anchor="w", padx=(28, 0), pady=(2, 0))
 
-        # 4. Debug Console Option (Windows)
+        # 4. Audio Alerts & Bell Chimes
+        sound_frame = ctk.CTkFrame(scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
+        sound_frame.pack(fill="x", padx=0, pady=8)
+
+        sound_row = ctk.CTkFrame(sound_frame, fg_color="transparent")
+        sound_row.pack(fill="x", padx=12, pady=10)
+
+        sound_info_col = ctk.CTkFrame(sound_row, fg_color="transparent")
+        sound_info_col.pack(side="left", fill="x", expand=True)
+
+        ctk.CTkLabel(
+            sound_info_col,
+            text="Audio Bell & Chime Alerts:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#FFFFFF",
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            sound_info_col,
+            text="Play audio bells on target hit, approaching warnings, and connection status",
+            font=ctk.CTkFont(size=11),
+            text_color="#94A3B8",
+        ).pack(anchor="w")
+
+        self.sound_switch_var = ctk.BooleanVar(value=settings.sound_enabled)
+        self.sound_switch = ctk.CTkSwitch(
+            sound_row,
+            text="Enabled" if settings.sound_enabled else "Muted",
+            variable=self.sound_switch_var,
+            command=self._on_sound_switch_toggled,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            progress_color="#08B6DE",
+        )
+        self.sound_switch.pack(side="right")
+
+        # 5. Debug Console Option (Windows)
         debug_frame = ctk.CTkFrame(scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
         debug_frame.pack(fill="x", padx=0, pady=8)
 
@@ -460,6 +495,10 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
                 parent=self,
             )
 
+    def _on_sound_switch_toggled(self):
+        is_on = bool(self.sound_switch_var.get())
+        self.sound_switch.configure(text="Enabled" if is_on else "Muted")
+
     def _on_debug_switch_toggled(self):
         is_on = bool(self.debug_switch.get())
         self.debug_switch.configure(text="Enabled" if is_on else "Hidden")
@@ -471,6 +510,7 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         excel_path_val = self.excel_path_entry.get().strip()
         sheet_val = self.sheet_entry.get().strip()
         publish_mode = "values" if self.formula_mask_var.get() else "formulas"
+        sound_val = "1" if self.sound_switch_var.get() else "0"
 
         env_path = settings.root_dir / ".env"
 
@@ -478,14 +518,17 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         update_env_variable("UPSTOX_ACCESS_TOKEN", token_val, env_path)
         update_env_variable("GOOGLE_SHEET_WEBHOOK_URL", gsheet_val, env_path)
         update_env_variable("GSHEET_PUBLISH_MODE", publish_mode, env_path)
+        update_env_variable("SOUND_ENABLED", sound_val, env_path)
 
         os.environ["UPSTOX_ACCESS_TOKEN"] = token_val
         os.environ["GOOGLE_SHEET_WEBHOOK_URL"] = gsheet_val
         os.environ["GSHEET_PUBLISH_MODE"] = publish_mode
+        os.environ["SOUND_ENABLED"] = sound_val
 
         # Update runtime settings
         settings.config.setdefault("excel", {})["file_path"] = excel_path_val
         settings.config.setdefault("excel", {})["sheet_name"] = sheet_val
+        settings.config.setdefault("sound", {})["enabled"] = (sound_val == "1")
 
         if self.on_save_callback:
             self.on_save_callback()

@@ -50,12 +50,14 @@ class SystemTrayController:
     def __init__(
         self,
         on_show: Optional[Callable[[], None]] = None,
+        on_alerts: Optional[Callable[[], None]] = None,
         on_start_live: Optional[Callable[[], None]] = None,
         on_start_sim: Optional[Callable[[], None]] = None,
         on_stop: Optional[Callable[[], None]] = None,
         on_exit: Optional[Callable[[], None]] = None,
     ):
         self.on_show = on_show
+        self.on_alerts = on_alerts
         self.on_start_live = on_start_live
         self.on_start_sim = on_start_sim
         self.on_stop = on_stop
@@ -74,6 +76,7 @@ class SystemTrayController:
 
         menu = pystray.Menu(
             pystray.MenuItem("Show Dashboard", self._handle_show, default=True),
+            pystray.MenuItem("Price Alerts...", self._handle_alerts),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Start Live Feed", self._handle_start_live),
             pystray.MenuItem("Run Simulation", self._handle_start_sim),
@@ -115,6 +118,10 @@ class SystemTrayController:
     def _handle_show(self, icon=None, item=None):
         if self.on_show:
             self.on_show()
+
+    def _handle_alerts(self, icon=None, item=None):
+        if self.on_alerts:
+            self.on_alerts()
 
     def _handle_start_live(self, icon=None, item=None):
         if self.on_start_live:

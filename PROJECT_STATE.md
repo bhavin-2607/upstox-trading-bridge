@@ -1,6 +1,6 @@
 # BSA Trading Bridge - Project Context & State
 
-> **Last Updated**: 2026-11-17  
+> **Last Updated**: 2026-11-18  
 > **Previous Session ID**: `4a66ba61-00ab-4850-a9cc-f214e09f8633`  
 > **Repository**: `~/Projects/upstox-trading-bridge`
 
@@ -27,11 +27,16 @@
    - Continuous live sync writes strictly to target data columns. Column A (`[SCRIPT]`) is never overwritten by price ticks, allowing users to type new scripts freely.
 3. **Bidirectional Script Synchronization**:
    - Adding/editing in Google Sheet or Excel is dynamically detected and subscribed via Upstox live WebSocket feed.
-4. **Resilient Network & GUI Architecture**:
+4. **Zero-Lag Sound & Custom Price Alert Engine**:
+   - Strictly user-specified custom target price alerts (Symbol + Target Price + Above/Below + Proximity Buffer).
+   - In-memory tick evaluation (<0.01ms per tick) inside `MarketStore.update_quote()` without COM/Excel overhead.
+   - 2-Stage Alert Lifecycle: `ACTIVE` -> `APPROACHING` (two-tone gentle chime) -> `TRIGGERED` (bright bell chime).
+   - Non-blocking asynchronous audio (`winsound.SND_ASYNC` on Windows, bounded queue `maxsize=1`, 1.2s debounce).
+   - No automatic signal monitoring across all 247 scripts, eliminating CPU stutter and Windows PC lag.
+5. **Resilient Network & GUI Architecture**:
    - Settings dialog features a permanently pinned bottom footer (`Save Changes` & `Cancel`) and scrollable container.
    - HTTP session pooling (`requests.Session`) and exponential backoff prevent Google Apps Script queue saturation.
-5. **Sound & Custom Price Alerts**:
-   - Preserved on dedicated branch `feat/sound-alerts` for future integration.
+   - Dedicated "Price Alerts & Bell Sound Manager" modal dialog and System Tray menu integration.
 
 ---
 
@@ -39,6 +44,9 @@
 
 | File | Purpose |
 | :--- | :--- |
+| `upstox_bridge/core/alert_engine.py` | Custom target price alert engine, 2-stage lifecycle, JSON persistence |
+| `upstox_bridge/core/sound_engine.py` | Ultra-lightweight, non-blocking asynchronous audio engine (synthesized WAVs) |
+| `upstox_bridge/gui/alerts_dialog.py` | Modern CustomTkinter modal dialog for custom alerts & sound manager |
 | `upstox_bridge/destinations/bst_syncer.py` | In-place Excel syncer (`xlwings` + `openpyxl` fallback), evaluated matrix extractor |
 | `upstox_bridge/destinations/gsheet_webhook.py` | Google Apps Script webhook integration, slice & matrix pusher |
 | `scripts/google_apps_script.js` | Google Apps Script webhook endpoint for Google Sheets |
@@ -46,7 +54,7 @@
 | `upstox_bridge/core/config.py` | Application configuration & `.env` manager |
 | `templates/BST_Master_Template.xlsx` | Master template with 232 scripts, headers, and formulas |
 | `dist/BSATradingBridge` | Standalone compiled executable |
-| `tests/` | Complete 45-test automated unit test suite |
+| `tests/` | Complete 62-test automated unit test suite |
 
 ---
 

@@ -252,6 +252,17 @@ class MarketStore:
             elif q.ltp > 0 and q.open > 0:
                 q.change = q.ltp - q.open
 
+            sym_for_alert = q.symbol
+            ltp_for_alert = q.ltp
+
+        # Evaluate custom price alerts outside lock (< 0.01ms in-memory, non-blocking)
+        if ltp_for_alert > 0:
+            try:
+                from upstox_bridge.core.alert_engine import alert_engine
+                alert_engine.evaluate_tick(sym_for_alert, ltp_for_alert)
+            except Exception:
+                pass
+
     def update_prev_day_stats(
         self,
         instrument_key: str,

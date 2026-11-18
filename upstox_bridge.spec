@@ -54,6 +54,7 @@ hiddenimports = [
 
 if sys.platform == "win32":
     hiddenimports += [
+        "winsound",
         "win32com",
         "win32com.client",
         "pythoncom",

@@ -167,6 +167,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
         # Initialize System Tray
         self.tray = SystemTrayController(
             on_show=self._restore_from_tray,
+            on_alerts=self._open_alerts_from_tray,
             on_start_live=self._start_live_bridge,
             on_start_sim=self._start_simulation,
             on_stop=self._stop_bridge,
@@ -740,10 +741,25 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             border_width=1,
             text_color=COLOR_TEXT_PRIMARY,
             height=36,
-            width=150,
+            width=145,
             command=self._open_settings,
         )
-        self.btn_settings.pack(side="right", padx=10, pady=8)
+        self.btn_settings.pack(side="right", padx=(6, 10), pady=8)
+
+        self.btn_alerts = ctk.CTkButton(
+            control_frame,
+            text=" 🔔 Alerts",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color="#16171B",
+            hover_color="#23252E",
+            border_color="#27272A",
+            border_width=1,
+            text_color=COLOR_BRAND_CYAN,
+            height=36,
+            width=110,
+            command=self._open_alerts_dialog,
+        )
+        self.btn_alerts.pack(side="right", padx=(0, 6), pady=8)
 
         self.btn_open_excel = ctk.CTkButton(
             control_frame,
@@ -757,7 +773,7 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
             border_width=1,
             text_color=COLOR_TEXT_PRIMARY,
             height=36,
-            width=135,
+            width=130,
             command=self._open_excel_file,
         )
         self.btn_open_excel.pack(side="right", padx=(0, 6), pady=8)
@@ -973,6 +989,15 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
     def _open_settings(self):
         SettingsDialog(self, on_save_callback=self._on_settings_saved)
 
+    def _open_alerts_from_tray(self):
+        self._restore_from_tray()
+        self.after(200, self._open_alerts_dialog)
+
+    def _open_alerts_dialog(self):
+        from upstox_bridge.gui.alerts_dialog import AlertsDialog
+        store = self.runner.market_store if hasattr(self, "runner") and self.runner else None
+        AlertsDialog(self, market_store=store)
+
     def _on_settings_saved(self):
         tok_txt, tok_col, tok_bg, tok_border = get_token_health(settings.upstox_access_token)
         self.pill_token.configure(fg_color=tok_bg, border_color=tok_border)
@@ -1089,7 +1114,19 @@ class UpstoxBridgeApp(ctk.CTk if ctk else object):
                     self.card_feed["status"].configure(text="STOPPED", text_color=COLOR_TEXT_SECONDARY)
                     self.card_server["status"].configure(text="STANDBY", text_color=COLOR_BRAND_AMBER)
 
-            # 4. Update Activity Console Logs
+            # 4. Update Active Alerts Badge
+            try:
+                from upstox_bridge.core.alert_engine import alert_engine
+                act_count = alert_engine.get_active_count()
+                if hasattr(self, "btn_alerts"):
+                    if act_count > 0:
+                        self.btn_alerts.configure(text=f" 🔔 Alerts ({act_count})", text_color=COLOR_STATUS_BULL)
+                    else:
+                        self.btn_alerts.configure(text=" 🔔 Alerts", text_color=COLOR_BRAND_CYAN)
+            except Exception:
+                pass
+
+            # 5. Update Activity Console Logs
             recent_logs = get_gui_logs()
             if recent_logs:
                 current_text = self.log_textbox.get("1.0", "end-1c")

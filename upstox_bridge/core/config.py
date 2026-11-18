@@ -186,6 +186,57 @@ class Settings:
     def local_server_port(self) -> int:
         return int(self.config.get("local_feed_server", {}).get("port", 8080))
 
+    # Sound & Audio Alert settings
+    @property
+    def sound_enabled(self) -> bool:
+        """Global master toggle for audio alerts."""
+        val = os.getenv("SOUND_ENABLED")
+        if val is not None:
+            return val.strip().lower() in ("1", "true", "yes", "on")
+        return bool(self.config.get("sound", {}).get("enabled", True))
+
+    @sound_enabled.setter
+    def sound_enabled(self, val: bool) -> None:
+        self.config.setdefault("sound", {})["enabled"] = bool(val)
+        os.environ["SOUND_ENABLED"] = "1" if val else "0"
+
+    @property
+    def sound_price_alerts_enabled(self) -> bool:
+        """Toggle for target price hit / approaching bell chimes."""
+        val = os.getenv("SOUND_PRICE_ALERTS_ENABLED")
+        if val is not None:
+            return val.strip().lower() in ("1", "true", "yes", "on")
+        return bool(self.config.get("sound", {}).get("price_alerts", True))
+
+    @sound_price_alerts_enabled.setter
+    def sound_price_alerts_enabled(self, val: bool) -> None:
+        self.config.setdefault("sound", {})["price_alerts"] = bool(val)
+        os.environ["SOUND_PRICE_ALERTS_ENABLED"] = "1" if val else "0"
+
+    @property
+    def sound_system_enabled(self) -> bool:
+        """Toggle for system connection / disconnection chimes."""
+        val = os.getenv("SOUND_SYSTEM_ENABLED")
+        if val is not None:
+            return val.strip().lower() in ("1", "true", "yes", "on")
+        return bool(self.config.get("sound", {}).get("system", True))
+
+    @sound_system_enabled.setter
+    def sound_system_enabled(self, val: bool) -> None:
+        self.config.setdefault("sound", {})["system"] = bool(val)
+        os.environ["SOUND_SYSTEM_ENABLED"] = "1" if val else "0"
+
+    @property
+    def alert_proximity_pct(self) -> float:
+        """Default buffer percentage for approaching price alerts (default: 0.25%)."""
+        val = os.getenv("ALERT_PROXIMITY_PCT")
+        if val is not None:
+            try:
+                return float(val)
+            except ValueError:
+                pass
+        return float(self.config.get("alerts", {}).get("proximity_pct", 0.25))
+
     # Watchlist symbols
     @property
     def watchlist_txt_path(self) -> Path:
