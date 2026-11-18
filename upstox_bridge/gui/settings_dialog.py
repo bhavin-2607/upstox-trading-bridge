@@ -386,7 +386,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             text_color="#94A3B8",
         ).pack(side="left", padx=(0, 8))
 
-        theme_labels = ["Exchange Bell (BSE/NYSE)", "TradingView Chime", "Cash Register"]
+        from upstox_bridge.core.sound_engine import sound_engine
+        self._available_sound_themes = sound_engine.get_available_bell_themes()
+        theme_labels = [l for l, _ in self._available_sound_themes]
         self.settings_theme_combo = ctk.CTkComboBox(
             sound_theme_row,
             values=theme_labels,
@@ -397,11 +399,11 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             text_color="#FFFFFF",
         )
         cur_theme = settings.sound_theme
-        def_label = "Exchange Bell (BSE/NYSE)"
-        if "tradingview" in cur_theme:
-            def_label = "TradingView Chime"
-        elif "cash" in cur_theme:
-            def_label = "Cash Register"
+        def_label = theme_labels[0] if theme_labels else "Exchange Bell (BSE/NYSE)"
+        for label, key in self._available_sound_themes:
+            if key == cur_theme:
+                def_label = label
+                break
         self.settings_theme_combo.set(def_label)
         self.settings_theme_combo.pack(side="left")
 
@@ -542,13 +544,12 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         publish_mode = "values" if self.formula_mask_var.get() else "formulas"
         sound_val = "1" if self.sound_switch_var.get() else "0"
 
-        chosen_theme_label = self.settings_theme_combo.get().lower()
-        if "tradingview" in chosen_theme_label:
-            theme_val = "tradingview"
-        elif "cash" in chosen_theme_label or "register" in chosen_theme_label:
-            theme_val = "cash_register"
-        else:
-            theme_val = "exchange_bell"
+        chosen_theme_label = self.settings_theme_combo.get()
+        theme_val = "exchange_bell"
+        for label, key in getattr(self, "_available_sound_themes", []):
+            if label == chosen_theme_label:
+                theme_val = key
+                break
 
         env_path = settings.root_dir / ".env"
 

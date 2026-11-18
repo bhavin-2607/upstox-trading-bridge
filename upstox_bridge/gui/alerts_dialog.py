@@ -182,10 +182,11 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
             text_color="#94A3B8",
         ).pack(side="left", padx=(0, 8))
 
-        theme_options = [label for label, _ in SoundTheme.ALL_THEMES]
+        self._available_themes = sound_engine.get_available_bell_themes()
+        theme_options = [label for label, _ in self._available_themes]
         current_theme_key = settings.sound_theme
-        default_label = "Exchange Bell (BSE/NYSE)"
-        for label, key in SoundTheme.ALL_THEMES:
+        default_label = theme_options[0] if theme_options else "Exchange Bell (BSE/NYSE)"
+        for label, key in self._available_themes:
             if key == current_theme_key:
                 default_label = label
                 break
@@ -202,6 +203,20 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
         )
         self.theme_combo.set(default_label)
         self.theme_combo.pack(side="left")
+
+        open_folder_btn = ctk.CTkButton(
+            theme_row,
+            text=" 📁 Add / View Sounds",
+            width=140,
+            height=28,
+            fg_color="#16171B",
+            hover_color="#23252E",
+            border_color="#27272A",
+            border_width=1,
+            text_color="#94A3B8",
+            command=self._open_sounds_folder,
+        )
+        open_folder_btn.pack(side="left", padx=(8, 0))
 
         # 3. ADD NEW ALERT FORM CARD
         form_card = ctk.CTkFrame(self.scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
@@ -533,15 +548,36 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
         env_path = settings.root_dir / ".env"
         update_env_variable("SOUND_ENABLED", val, env_path)
 
+    def _open_sounds_folder(self) -> None:
+        """Open assets/sounds/ in system file manager and refresh choices."""
+        path = sound_engine.sounds_dir
+        path.mkdir(parents=True, exist_ok=True)
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(path))
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", str(path)])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(path)])
+        except Exception:
+            pass
+        self.after(1000, self._refresh_themes)
+
+    def _refresh_themes(self) -> None:
+        """Refresh theme options if user dropped new WAV files."""
+        self._available_themes = sound_engine.get_available_bell_themes()
+        labels = [l for l, _ in self._available_themes]
+        self.theme_combo.configure(values=labels)
+
     def _on_theme_changed(self, choice: str) -> None:
         """Handle sound theme change and audition sound."""
-        raw = choice.lower()
-        if "tradingview" in raw:
-            theme_key = "tradingview"
-        elif "cash" in raw or "register" in raw:
-            theme_key = "cash_register"
-        else:
-            theme_key = "exchange_bell"
+        theme_key = "exchange_bell"
+        for label, key in getattr(self, "_available_themes", []):
+            if label == choice:
+                theme_key = key
+                break
 
         settings.sound_theme = theme_key
         env_path = settings.root_dir / ".env"

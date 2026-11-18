@@ -387,6 +387,40 @@ class SoundEngine:
             wf.setframerate(sample_rate)
             wf.writeframes(data)
 
+    def get_available_bell_themes(self) -> List[Tuple[str, str]]:
+        """
+        Dynamically discover all available bell sound options.
+        Combines built-in themes with any custom *.wav files found in assets/sounds/.
+        Returns list of (display_label, theme_key) tuples.
+        """
+        builtin = [
+            ("Exchange Bell (BSE/NYSE)", SoundTheme.EXCHANGE_BELL),
+            ("TradingView Chime", SoundTheme.TRADINGVIEW),
+            ("Cash Register", SoundTheme.CASH_REGISTER),
+        ]
+
+        reserved_stems = {
+            "approaching",
+            "connected",
+            "disconnected",
+            "target_hit",
+            SoundTheme.EXCHANGE_BELL,
+            SoundTheme.TRADINGVIEW,
+            SoundTheme.CASH_REGISTER,
+        }
+
+        custom_themes: List[Tuple[str, str]] = []
+        if self.sounds_dir.exists():
+            for wav_file in sorted(self.sounds_dir.glob("*.wav")):
+                stem = wav_file.stem.lower()
+                if stem in reserved_stems or wav_file.stat().st_size < 500:
+                    continue
+                clean_name = wav_file.stem.replace("_", " ").replace("-", " ").title()
+                label = f"Custom: {clean_name}"
+                custom_themes.append((label, wav_file.stem))
+
+        return builtin + custom_themes
+
     # =========================================================================
     # AUDIO PLAYBACK & DISPATCH
     # =========================================================================
@@ -398,18 +432,23 @@ class SoundEngine:
         if custom_file.exists() and custom_file.stat().st_size > 500:
             return custom_file
 
-        # 2. Target Hit themed sound lookup
+        # 2. Target Hit themed sound lookup (built-in or custom named WAVs)
         if event_name == SoundEvent.TARGET_HIT:
-            active_theme = (theme or settings.sound_theme).lower().strip()
-            if "tradingview" in active_theme:
-                themed_file = self.sounds_dir / "tradingview.wav"
-            elif "cash" in active_theme or "register" in active_theme:
-                themed_file = self.sounds_dir / "cash_register.wav"
-            else:
-                themed_file = self.sounds_dir / "exchange_bell.wav"
+            active_theme = (theme or settings.sound_theme).strip()
+            # Direct exact match (e.g. "exchange_bell.wav", "tradingview.wav", "my_bell.wav")
+            exact_file = self.sounds_dir / f"{active_theme}.wav"
+            if exact_file.exists():
+                return exact_file
 
-            if themed_file.exists():
-                return themed_file
+            # Case-insensitive match across all WAV files in sounds dir
+            for f in self.sounds_dir.glob("*.wav"):
+                if f.stem.lower() == active_theme.lower():
+                    return f
+
+            # Default fallback
+            fallback = self.sounds_dir / "exchange_bell.wav"
+            if fallback.exists():
+                return fallback
 
         # 3. Standard event files
         event_file = self.sounds_dir / f"{event_name}.wav"

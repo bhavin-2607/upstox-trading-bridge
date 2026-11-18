@@ -78,6 +78,23 @@ class TestSoundEngine(unittest.TestCase):
         path_override = self.engine._resolve_sound_path(SoundEvent.TARGET_HIT, theme=SoundTheme.EXCHANGE_BELL)
         self.assertEqual(path_override.name, "target_hit.wav")
 
+    def test_dynamic_custom_named_wav_discovery(self):
+        """Verify that any custom *.wav file dropped with a normal name appears in dropdown and resolves."""
+        my_bell = self.temp_dir / "bse_closing_gong.wav"
+        with open(my_bell, "wb") as f:
+            f.write(b"RIFF" + b"\x00" * 600)
+
+        themes = self.engine.get_available_bell_themes()
+        labels = [l for l, _ in themes]
+        keys = [k for _, k in themes]
+
+        self.assertIn("Custom: Bse Closing Gong", labels)
+        self.assertIn("bse_closing_gong", keys)
+
+        # Verify resolution
+        resolved = self.engine._resolve_sound_path(SoundEvent.TARGET_HIT, theme="bse_closing_gong")
+        self.assertEqual(resolved.name, "bse_closing_gong.wav")
+
     def test_non_blocking_play_execution(self):
         """Ensure play() returns immediately in < 5ms without blocking the calling thread."""
         t_start = time.perf_counter()
