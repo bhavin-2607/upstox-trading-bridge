@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any, List, Optional
 try:
@@ -357,8 +358,22 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
             return None
         upper = symbol.strip().upper()
         item = self.market_store.get_quote_by_symbol(upper)
-        if item and item.ltp > 0:
-            return float(item.ltp)
+        if not item:
+            return None
+
+        # MarketStore.get_quote_by_symbol returns a dictionary
+        if isinstance(item, dict):
+            raw_ltp = item.get("ltp") or item.get("close") or item.get("prev_close")
+        else:
+            raw_ltp = getattr(item, "ltp", None) or getattr(item, "close", None) or getattr(item, "prev_close", None)
+
+        try:
+            if raw_ltp is not None:
+                val = float(raw_ltp)
+                if val > 0:
+                    return val
+        except (ValueError, TypeError):
+            pass
         return None
 
     def _on_symbol_changed(self, choice: str) -> None:
