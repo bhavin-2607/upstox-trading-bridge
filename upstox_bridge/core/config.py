@@ -227,6 +227,20 @@ class Settings:
         os.environ["SOUND_SYSTEM_ENABLED"] = "1" if val else "0"
 
     @property
+    def sound_theme(self) -> str:
+        """Active sound theme: 'exchange_bell' (default), 'tradingview', or 'cash_register'."""
+        val = os.getenv("SOUND_THEME")
+        if val is not None and val.strip():
+            return val.strip().lower()
+        return str(self.config.get("sound", {}).get("theme", "exchange_bell"))
+
+    @sound_theme.setter
+    def sound_theme(self, val: str) -> None:
+        clean = str(val).strip().lower()
+        self.config.setdefault("sound", {})["theme"] = clean
+        os.environ["SOUND_THEME"] = clean
+
+    @property
     def alert_proximity_pct(self) -> float:
         """Default buffer percentage for approaching price alerts (default: 0.25%)."""
         val = os.getenv("ALERT_PROXIMITY_PCT")

@@ -15,7 +15,7 @@ except Exception:
 from upstox_bridge.core.alert_engine import AlertCondition, AlertStatus, PriceAlert, alert_engine
 from upstox_bridge.core.config import get_asset_path, settings, update_env_variable
 from upstox_bridge.core.market_store import MarketStore
-from upstox_bridge.core.sound_engine import SoundEvent, sound_engine
+from upstox_bridge.core.sound_engine import SoundEvent, SoundTheme, sound_engine
 from upstox_bridge.gui.icons import IconManager
 
 
@@ -128,7 +128,7 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
         audio_card.pack(fill="x", pady=(0, 12))
 
         audio_row = ctk.CTkFrame(audio_card, fg_color="transparent")
-        audio_row.pack(fill="x", padx=12, pady=10)
+        audio_row.pack(fill="x", padx=12, pady=(10, 6))
 
         # Mute Switch
         self.sound_switch_var = ctk.BooleanVar(value=settings.sound_enabled)
@@ -170,6 +170,38 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
             command=lambda: sound_engine.play(SoundEvent.APPROACHING, cooldown_sec=0.0),
         )
         test_appr_btn.pack(side="right")
+
+        # Sound Theme Selector Row
+        theme_row = ctk.CTkFrame(audio_card, fg_color="transparent")
+        theme_row.pack(fill="x", padx=12, pady=(0, 10))
+
+        ctk.CTkLabel(
+            theme_row,
+            text="Bell Sound Style:",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#94A3B8",
+        ).pack(side="left", padx=(0, 8))
+
+        theme_options = [label for label, _ in SoundTheme.ALL_THEMES]
+        current_theme_key = settings.sound_theme
+        default_label = "Exchange Bell (BSE/NYSE)"
+        for label, key in SoundTheme.ALL_THEMES:
+            if key == current_theme_key:
+                default_label = label
+                break
+
+        self.theme_combo = ctk.CTkComboBox(
+            theme_row,
+            values=theme_options,
+            command=self._on_theme_changed,
+            height=28,
+            width=230,
+            fg_color="#08080A",
+            border_color="#27272A",
+            text_color="#FFFFFF",
+        )
+        self.theme_combo.set(default_label)
+        self.theme_combo.pack(side="left")
 
         # 3. ADD NEW ALERT FORM CARD
         form_card = ctk.CTkFrame(self.scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
@@ -500,6 +532,22 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
         settings.config.setdefault("sound", {})["enabled"] = is_on
         env_path = settings.root_dir / ".env"
         update_env_variable("SOUND_ENABLED", val, env_path)
+
+    def _on_theme_changed(self, choice: str) -> None:
+        """Handle sound theme change and audition sound."""
+        raw = choice.lower()
+        if "tradingview" in raw:
+            theme_key = "tradingview"
+        elif "cash" in raw or "register" in raw:
+            theme_key = "cash_register"
+        else:
+            theme_key = "exchange_bell"
+
+        settings.sound_theme = theme_key
+        env_path = settings.root_dir / ".env"
+        update_env_variable("SOUND_THEME", theme_key, env_path)
+        # Audition immediately
+        sound_engine.play(SoundEvent.TARGET_HIT, cooldown_sec=0.0, theme=theme_key)
 
     def _start_live_refresh(self) -> None:
         """Periodically update distance and status in the dialog."""

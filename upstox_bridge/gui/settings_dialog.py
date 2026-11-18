@@ -375,6 +375,36 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         )
         self.sound_switch.pack(side="right")
 
+        # Sound Theme Selector Row
+        sound_theme_row = ctk.CTkFrame(sound_frame, fg_color="transparent")
+        sound_theme_row.pack(fill="x", padx=12, pady=(0, 10))
+
+        ctk.CTkLabel(
+            sound_theme_row,
+            text="Bell Sound Style:",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#94A3B8",
+        ).pack(side="left", padx=(0, 8))
+
+        theme_labels = ["Exchange Bell (BSE/NYSE)", "TradingView Chime", "Cash Register"]
+        self.settings_theme_combo = ctk.CTkComboBox(
+            sound_theme_row,
+            values=theme_labels,
+            height=28,
+            width=230,
+            fg_color="#08080A",
+            border_color="#27272A",
+            text_color="#FFFFFF",
+        )
+        cur_theme = settings.sound_theme
+        def_label = "Exchange Bell (BSE/NYSE)"
+        if "tradingview" in cur_theme:
+            def_label = "TradingView Chime"
+        elif "cash" in cur_theme:
+            def_label = "Cash Register"
+        self.settings_theme_combo.set(def_label)
+        self.settings_theme_combo.pack(side="left")
+
         # 5. Debug Console Option (Windows)
         debug_frame = ctk.CTkFrame(scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
         debug_frame.pack(fill="x", padx=0, pady=8)
@@ -512,6 +542,14 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         publish_mode = "values" if self.formula_mask_var.get() else "formulas"
         sound_val = "1" if self.sound_switch_var.get() else "0"
 
+        chosen_theme_label = self.settings_theme_combo.get().lower()
+        if "tradingview" in chosen_theme_label:
+            theme_val = "tradingview"
+        elif "cash" in chosen_theme_label or "register" in chosen_theme_label:
+            theme_val = "cash_register"
+        else:
+            theme_val = "exchange_bell"
+
         env_path = settings.root_dir / ".env"
 
         # Update environment variables
@@ -519,16 +557,19 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         update_env_variable("GOOGLE_SHEET_WEBHOOK_URL", gsheet_val, env_path)
         update_env_variable("GSHEET_PUBLISH_MODE", publish_mode, env_path)
         update_env_variable("SOUND_ENABLED", sound_val, env_path)
+        update_env_variable("SOUND_THEME", theme_val, env_path)
 
         os.environ["UPSTOX_ACCESS_TOKEN"] = token_val
         os.environ["GOOGLE_SHEET_WEBHOOK_URL"] = gsheet_val
         os.environ["GSHEET_PUBLISH_MODE"] = publish_mode
         os.environ["SOUND_ENABLED"] = sound_val
+        os.environ["SOUND_THEME"] = theme_val
 
         # Update runtime settings
         settings.config.setdefault("excel", {})["file_path"] = excel_path_val
         settings.config.setdefault("excel", {})["sheet_name"] = sheet_val
         settings.config.setdefault("sound", {})["enabled"] = (sound_val == "1")
+        settings.config.setdefault("sound", {})["theme"] = theme_val
 
         if self.on_save_callback:
             self.on_save_callback()
