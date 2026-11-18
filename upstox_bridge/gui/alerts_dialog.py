@@ -154,7 +154,7 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
             border_color="#27272A",
             border_width=1,
             text_color="#F4F4F5",
-            command=lambda: sound_engine.play(SoundEvent.TARGET_HIT, cooldown_sec=0.0),
+            command=lambda: sound_engine.play(SoundEvent.TARGET_HIT, cooldown_sec=0.0, force=True),
         )
         test_hit_btn.pack(side="right", padx=(6, 0))
 
@@ -168,7 +168,7 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
             border_color="#27272A",
             border_width=1,
             text_color="#E2E8F0",
-            command=lambda: sound_engine.play(SoundEvent.APPROACHING, cooldown_sec=0.0),
+            command=lambda: sound_engine.play(SoundEvent.APPROACHING, cooldown_sec=0.0, force=True),
         )
         test_appr_btn.pack(side="right")
 
@@ -559,9 +559,14 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
         self.sound_switch.configure(text="Audio Alerts: Enabled" if is_on else "Audio Alerts: Muted")
         val = "1" if is_on else "0"
         os.environ["SOUND_ENABLED"] = val
+        os.environ["SOUND_PRICE_ALERTS_ENABLED"] = val
+        settings.sound_enabled = is_on
+        settings.sound_price_alerts_enabled = is_on
         settings.config.setdefault("sound", {})["enabled"] = is_on
+        settings.config.setdefault("sound", {})["price_alerts"] = is_on
         env_path = settings.root_dir / ".env"
         update_env_variable("SOUND_ENABLED", val, env_path)
+        update_env_variable("SOUND_PRICE_ALERTS_ENABLED", val, env_path)
 
     def _open_sounds_folder(self) -> None:
         """Open assets/sounds/ in system file manager and refresh choices."""
@@ -597,8 +602,8 @@ class AlertsDialog(ctk.CTkToplevel if ctk else object):
         settings.sound_theme = theme_key
         env_path = settings.root_dir / ".env"
         update_env_variable("SOUND_THEME", theme_key, env_path)
-        # Audition immediately
-        sound_engine.play(SoundEvent.TARGET_HIT, cooldown_sec=0.0, theme=theme_key)
+        # Audition immediately with force=True
+        sound_engine.play(SoundEvent.TARGET_HIT, cooldown_sec=0.0, theme=theme_key, force=True)
 
     def _start_live_refresh(self) -> None:
         """Periodically update distance and status in the dialog."""

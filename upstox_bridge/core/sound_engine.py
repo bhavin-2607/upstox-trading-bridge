@@ -462,21 +462,24 @@ class SoundEngine:
         event_name: str,
         cooldown_sec: float = 1.2,
         theme: Optional[str] = None,
+        force: bool = False,
     ) -> None:
         """
         Asynchronously play a sound event with anti-spam rate limiting.
         Thread-safe, strictly non-blocking, and returns in < 0.1ms.
+        Pass force=True to audition sounds even when alerts are muted.
         """
-        if not settings.sound_enabled:
-            return
+        if not force:
+            if not settings.sound_enabled:
+                return
 
-        # Check category-specific settings
-        if event_name in (SoundEvent.TARGET_HIT, SoundEvent.APPROACHING):
-            if not settings.sound_price_alerts_enabled:
-                return
-        elif event_name in (SoundEvent.CONNECTED, SoundEvent.DISCONNECTED):
-            if not settings.sound_system_enabled:
-                return
+            # Check category-specific settings
+            if event_name in (SoundEvent.TARGET_HIT, SoundEvent.APPROACHING):
+                if not settings.sound_price_alerts_enabled:
+                    return
+            elif event_name in (SoundEvent.CONNECTED, SoundEvent.DISCONNECTED):
+                if not settings.sound_system_enabled:
+                    return
 
         now = time.time()
         # Global debounce: minimum 1.0s between ANY sounds to prevent audio stutter

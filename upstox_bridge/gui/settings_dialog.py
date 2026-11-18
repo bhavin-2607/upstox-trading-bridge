@@ -57,6 +57,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         self.transient(parent)
         self.grab_set()
 
+        self._debounce_timer: Optional[str] = None
+        self.protocol("WM_DELETE_WINDOW", self._on_close_clicked)
+
         self._build_ui()
 
     def _windows_set_titlebar_icon(self):
@@ -74,33 +77,41 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         btn_row = ctk.CTkFrame(footer_frame, fg_color="transparent")
         btn_row.pack(fill="x", padx=pad_x, pady=14)
 
-        cancel_btn = ctk.CTkButton(
+        close_btn = ctk.CTkButton(
             btn_row,
-            text=" Cancel",
+            text=" Close",
             image=IconManager.get_icon("clear", size=(13, 13)),
             compound="left",
-            width=100,
+            width=90,
             height=36,
             fg_color="#16171B",
             hover_color="#23252E",
             border_color="#27272A",
             border_width=1,
             text_color="#A1A1AA",
-            command=self.destroy,
+            command=self._on_close_clicked,
         )
-        cancel_btn.pack(side="left")
+        close_btn.pack(side="left")
+
+        self.lbl_save_status = ctk.CTkLabel(
+            btn_row,
+            text="Auto-save active ✓",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#10B981",
+        )
+        self.lbl_save_status.pack(side="left", padx=14)
 
         save_btn = ctk.CTkButton(
             btn_row,
             text=" Save Changes",
             image=IconManager.get_icon("play", size=(13, 13)),
             compound="left",
-            width=140,
+            width=135,
             height=36,
             fg_color="#08B6DE",
             hover_color="#0693b3",
             text_color="#FFFFFF",
-            command=self._save_settings,
+            command=lambda: self._save_settings(silent=False, close_dialog=True),
         )
         save_btn.pack(side="right")
 
@@ -203,6 +214,14 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             text_color="#FFFFFF",
         )
         paste_btn.pack(side="left")
+
+        self.lbl_token_auto_save = ctk.CTkLabel(
+            token_btn_row,
+            text="",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#10B981",
+        )
+        self.lbl_token_auto_save.pack(side="left", padx=10)
 
         # 2. Excel Workbook File Path
         excel_frame = ctk.CTkFrame(scroll, fg_color="#101114", border_color="#1E2026", border_width=1, corner_radius=10)
@@ -327,6 +346,7 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             text_color="#F4F4F5",
             fg_color="#3B82F6",
             hover_color="#2563EB",
+            command=self._on_formula_mask_toggled,
         )
         self.formula_mask_checkbox.pack(anchor="w")
 
@@ -397,6 +417,7 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             fg_color="#08080A",
             border_color="#27272A",
             text_color="#FFFFFF",
+            command=self._on_theme_changed,
         )
         cur_theme = settings.sound_theme
         def_label = theme_labels[0] if theme_labels else "Exchange Bell (BSE/NYSE)"
@@ -443,6 +464,11 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         else:
             self.debug_switch.deselect()
 
+        # Bind inputs for instant auto-save
+        for entry in (self.token_entry, self.excel_path_entry, self.sheet_entry, self.gsheet_entry):
+            entry.bind("<KeyRelease>", self._on_input_changed)
+            entry.bind("<FocusOut>", lambda e: self._save_settings(silent=True, close_dialog=False))
+
     def _toggle_show_token(self):
         if self.token_entry.cget("show") == "*":
             self.token_entry.configure(show="")
@@ -457,6 +483,9 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
             if clipboard:
                 self.token_entry.delete(0, "end")
                 self.token_entry.insert(0, clipboard)
+                self._save_settings(silent=True, close_dialog=False)
+                if hasattr(self, "lbl_token_auto_save"):
+                    self.lbl_token_auto_save.configure(text="✓ Token auto-saved to .env", text_color="#10B981")
         except Exception:
             pass
 
@@ -469,6 +498,15 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         if chosen:
             self.excel_path_entry.delete(0, "end")
             self.excel_path_entry.insert(0, chosen)
+            self._save_settings(silent=True, close_dialog=False)
+
+    def _on_input_changed(self, event=None):
+        if hasattr(self, "_debounce_timer") and self._debounce_timer:
+            try:
+                self.after_cancel(self._debounce_timer)
+            except Exception:
+                pass
+        self._debounce_timer = self.after(800, lambda: self._save_settings(silent=True, close_dialog=False))
 
     def _test_gsheet(self):
         url = self.gsheet_entry.get().strip()
@@ -530,13 +568,29 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
     def _on_sound_switch_toggled(self):
         is_on = bool(self.sound_switch_var.get())
         self.sound_switch.configure(text="Enabled" if is_on else "Muted")
+        settings.sound_enabled = is_on
+        settings.sound_price_alerts_enabled = is_on
+        self._save_settings(silent=True, close_dialog=False)
+
+    def _on_theme_changed(self, choice: str):
+        self._save_settings(silent=True, close_dialog=False)
+        from upstox_bridge.core.sound_engine import SoundEvent, sound_engine
+        sound_engine.play(SoundEvent.TARGET_HIT, cooldown_sec=0.0, theme=settings.sound_theme, force=True)
+
+    def _on_formula_mask_toggled(self):
+        self._save_settings(silent=True, close_dialog=False)
 
     def _on_debug_switch_toggled(self):
         is_on = bool(self.debug_switch.get())
         self.debug_switch.configure(text="Enabled" if is_on else "Hidden")
         set_debug_console(is_on)
+        self._save_settings(silent=True, close_dialog=False)
 
-    def _save_settings(self):
+    def _on_close_clicked(self):
+        self._save_settings(silent=True, close_dialog=False)
+        self.destroy()
+
+    def _save_settings(self, silent: bool = False, close_dialog: bool = True):
         token_val = self.token_entry.get().strip()
         gsheet_val = self.gsheet_entry.get().strip()
         excel_path_val = self.excel_path_entry.get().strip()
@@ -558,22 +612,34 @@ class SettingsDialog(ctk.CTkToplevel if ctk else object):
         update_env_variable("GOOGLE_SHEET_WEBHOOK_URL", gsheet_val, env_path)
         update_env_variable("GSHEET_PUBLISH_MODE", publish_mode, env_path)
         update_env_variable("SOUND_ENABLED", sound_val, env_path)
+        update_env_variable("SOUND_PRICE_ALERTS_ENABLED", sound_val, env_path)
         update_env_variable("SOUND_THEME", theme_val, env_path)
 
         os.environ["UPSTOX_ACCESS_TOKEN"] = token_val
         os.environ["GOOGLE_SHEET_WEBHOOK_URL"] = gsheet_val
         os.environ["GSHEET_PUBLISH_MODE"] = publish_mode
         os.environ["SOUND_ENABLED"] = sound_val
+        os.environ["SOUND_PRICE_ALERTS_ENABLED"] = sound_val
         os.environ["SOUND_THEME"] = theme_val
 
         # Update runtime settings
         settings.config.setdefault("excel", {})["file_path"] = excel_path_val
         settings.config.setdefault("excel", {})["sheet_name"] = sheet_val
-        settings.config.setdefault("sound", {})["enabled"] = (sound_val == "1")
-        settings.config.setdefault("sound", {})["theme"] = theme_val
+        settings.sound_enabled = (sound_val == "1")
+        settings.sound_price_alerts_enabled = (sound_val == "1")
+        settings.sound_theme = theme_val
 
         if self.on_save_callback:
-            self.on_save_callback()
+            try:
+                self.on_save_callback()
+            except Exception:
+                pass
 
-        messagebox.showinfo("Saved", "Settings successfully saved to .env and applied!", parent=self)
-        self.destroy()
+        if hasattr(self, "lbl_save_status"):
+            self.lbl_save_status.configure(text="✓ Auto-saved to .env", text_color="#10B981")
+
+        if not silent:
+            messagebox.showinfo("Saved", "Settings successfully saved to .env and applied!", parent=self)
+
+        if close_dialog:
+            self.destroy()
