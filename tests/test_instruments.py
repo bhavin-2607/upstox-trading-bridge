@@ -23,6 +23,19 @@ class TestInstrumentMaster(unittest.TestCase):
         self.assertEqual(self.master.resolve_symbol("TCS"), "NSE_EQ|INE467B01029")
         self.assertEqual(self.master.resolve_symbol("INFY"), "NSE_EQ|INE009A01021")
 
+    def test_resolve_mcx_copper_fut(self):
+        self.assertEqual(self.master.resolve_symbol("MCX COPPER FUT"), "MCX_FO|578634")
+        self.assertEqual(self.master.resolve_symbol("COPPER FUT"), "MCX_FO|578634")
+        self.assertEqual(self.master.resolve_symbol("MCX:COPPER FUT"), "MCX_FO|578634")
+        self.assertEqual(self.master.resolve_symbol("MCX COPPER DEC FUT"), "MCX_FO|581714")
+        self.assertEqual(self.master.resolve_symbol("COPPER DEC FUT"), "MCX_FO|581714")
+
+    def test_resolve_options_user_syntax(self):
+        self.assertEqual(self.master.resolve_symbol("NIFTY 29 DEC 24000 PE"), "NSE_FO|71502")
+        self.assertEqual(self.master.resolve_symbol("NIFTY 29 DEC 24000 CE"), "NSE_FO|71501")
+        self.assertEqual(self.master.resolve_symbol("BANKNIFTY 29 DEC 51000 CE"), "NSE_FO|53220")
+        self.assertEqual(self.master.resolve_symbol("FINNIFTY 29 DEC 23500 PE"), "NSE_FO|60642")
+
 
 if __name__ == "__main__":
     unittest.main()
